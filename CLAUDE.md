@@ -10,16 +10,19 @@
 
 ### 課堂應答器（開發中，見 `工作筆記(cockpit): 工作筆記_課堂應答器.md`）
 - 教室即時作答系統（類似 Kahoot/Plickers 教室版）：老師發布一大題（可拆多個小題，可含文字/圖片），四選一 A-D；學生掃 QR code、輸入班級代碼 + 座號登入作答。
-- 大題限時，小題不單獨限時，逾時未答自動算 timeout。
+- 大題限時，小題不單獨限時；**一個大題開始後，底下所有小題一次全部顯示給學生**，可任意順序作答，不是老師一題題往下推進。
+- 逾時未答自動算 timeout——**不寫額外的 `timedOut` 欄位**，統計時用算的：`responses` 裡沒有這筆記錄、且 `runs.startedAt + timeLimitSeconds` 已過，即視為 timeout。
 - 同科別的題庫可以跨班級共用，但各班的作答資料、點名紀錄嚴格隔離，班級之間互不可見。
 - 學生登入作答的動作本身兼作點名（座號 + 加入時間戳），不另外做點名介面。
-- 課後統計答對數與作答耗時排名。
-- **技術路線**：純前端 HTML/CSS/JS（vanilla JS，不用建置工具）+ Firebase（Firestore 即時同步 + Google 登入白名單）。QR code 用 `qrcodejs`（cdnjs），房間/場次代碼用隨機 6 碼（排除易混淆字元）。Firebase 專案另開一個新的，不共用 `kj-affinity-board`。
+- 課後統計答對數與作答耗時排名，且支援「當天全部 session 加總」（見下方 `sessions` 的 `date` 欄位）。
+- **老師端即時投影「全班作答分佈」**（像 Kahoot 的長條圖，每個小題各選項被選次數即時更新）——用 `responses` 的 `onSnapshot` 監聽在前端算票數即可，不用額外的 collection，跟 kj 老師端即時渲染便利貼牆同一種做法。
+- **視覺主色**：Tiffany 藍 `#0ABAB5`（跟 KJ 便利貼牆的橘色區分，其餘 card／圓角／排版風格沿用）。
+- **技術路線**：純前端 HTML/CSS/JS（vanilla JS，不用建置工具）+ Firebase（Firestore 即時同步 + Google 登入白名單 + **Storage 存小題圖片**，不把圖片塞 base64 進 Firestore）。QR code 用 `qrcodejs`（cdnjs），房間/場次代碼用隨機 6 碼（排除易混淆字元）。Firebase 專案另開一個新的，不共用 `kj-affinity-board`。
 - **資料模型（設計定案，尚未實作）**：
   - `teachers/{email}`：白名單 + 科別授權（`subjects: []`），比照 kj 的 `allowedEmails` 但多一個科別欄位。
-  - `questionBanks/{bankId}`：一大題，含 `subject`、`timeLimitSeconds`、`subQuestions[]`（文字/圖片、A-D 選項、正解）。依科別共用（讀權限看 `teachers.subjects` 是否包含該題庫科別）。
+  - `questionBanks/{bankId}`：一大題，含 `subject`、`timeLimitSeconds`、`subQuestions[]`（文字/圖片 URL、A-D 選項、正解）。依科別共用（讀權限看 `teachers.subjects` 是否包含該題庫科別）。
   - `classes/{classId}`：`teacherId`（uid）、`subject`、`roster`（座號名單，沿用 kj 的 `1-45` 範圍語法）。嚴格歸屬單一老師。
-  - `sessions/{sessionId}`：某堂課，QR 碼指到這裡。子集合 `joined/{seatNo}`（點名，含 `joinedAt`）、`runs/{bankId}`（計時狀態，含 `startedAt`+`timeLimitSeconds`）、`responses/{seatNo_subQ}`（作答紀錄，含是否正確、耗時、是否 timeout）。
+  - `sessions/{sessionId}`：某堂課，QR 碼指到這裡。含 `classId`、`date`（YYYY-MM-DD，用來跨 session 當日彙總排行榜）。子集合 `joined/{seatNo}`（點名，含 `joinedAt`）、`runs/{bankId}`（計時狀態，含 `startedAt`+`timeLimitSeconds`）、`responses/{seatNo_subQ}`（作答紀錄：選了什麼、是否正確、耗時；**不存 timedOut，缺記錄+已過期＝timeout**）。
 
 ### KJ 便利貼牆（規劃中，尚未搬入）
 - 目前仍獨立運作在 `D:\我的雲端硬碟\2026-KJ分類法\tools\kj-affinity-board\`（已上線、有其他老師在用）。
