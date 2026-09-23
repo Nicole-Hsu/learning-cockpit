@@ -106,6 +106,13 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
       <button class="btn secondary" id="deleteClassBtn" style="color:var(--danger);flex:0 0 auto;">刪除這個班級</button>
     </div>
     <div class="err" id="classErr"></div>
+    <div id="editClassArea" class="hidden" style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px;">
+      <div style="font-size:.82rem;font-weight:600;color:var(--text-mid);margin-bottom:8px;">改這個班級的名稱／科別（打錯字可以在這裡改，不用整個刪掉重建）</div>
+      <div class="field"><label>班級名稱</label><input id="editClassName"></div>
+      <div class="field"><label>科別</label><input id="editClassSubject" list="subjectOptions"></div>
+      <button class="btn secondary" id="saveClassEditBtn">儲存修改</button>
+      <div class="err" id="editClassErr"></div>
+    </div>
   </div>
 
   <div class="card hidden" id="rosterCard">
@@ -373,6 +380,9 @@ document.getElementById('useClassBtn').addEventListener('click', async () => {
         document.getElementById('subjectOptions').appendChild(opt);
       }
     }
+    document.getElementById('editClassName').value = classData.name;
+    document.getElementById('editClassSubject').value = classData.subject;
+    document.getElementById('editClassArea').classList.remove('hidden');
     document.getElementById('rosterCard').classList.remove('hidden');
     document.getElementById('bankListCard').classList.remove('hidden');
     document.getElementById('sessionCard').classList.remove('hidden');
@@ -380,6 +390,43 @@ document.getElementById('useClassBtn').addEventListener('click', async () => {
     await loadBankList();
     await loadPublishSelect();
     await checkTodaySession();
+  } catch (e) { errEl.textContent = e.message; }
+});
+
+document.getElementById('saveClassEditBtn').addEventListener('click', async () => {
+  const errEl = document.getElementById('editClassErr');
+  errEl.textContent = ''; errEl.style.color = 'var(--danger)';
+  const newName = document.getElementById('editClassName').value.trim();
+  const newSubject = document.getElementById('editClassSubject').value.trim();
+  if (!newName) { errEl.textContent = '請輸入班級名稱'; return; }
+  if (!newSubject) { errEl.textContent = '請輸入科別'; return; }
+  const oldSubject = classData.subject;
+  try {
+    await updateDoc(doc(db, 'classes', classId), { name: newName, subject: newSubject });
+    classData.name = newName; classData.subject = newSubject;
+    const opt = document.querySelector('#classSelect option[value="' + classId + '"]');
+    if (opt) opt.textContent = newName + '（' + newSubject + '）';
+
+    if (newSubject !== oldSubject) {
+      if (confirm('科別改成「' + newSubject + '」了。要不要順便把你自己建立、原本科別是「' + oldSubject + '」的題庫也一起改成「' + newSubject + '」？（只會動到你自己建立的題庫，不會影響其他老師的）')) {
+        const banksSnap = await getDocs(query(collection(db, 'questionBanks'), where('subject', '==', oldSubject), where('createdBy', '==', myUid)));
+        const batch = writeBatch(db);
+        banksSnap.docs.forEach(d => batch.update(d.ref, { subject: newSubject }));
+        if (banksSnap.docs.length) await batch.commit();
+      }
+      if (!mySubjects.includes(newSubject)) {
+        mySubjects = [...mySubjects, newSubject];
+        await setDoc(doc(db, 'teachers', myEmail), { subjects: mySubjects }, { merge: true });
+        const dsOpt = document.createElement('option');
+        dsOpt.value = newSubject;
+        document.getElementById('subjectOptions').appendChild(dsOpt);
+      }
+    }
+    await loadBankList();
+    await loadPublishSelect();
+    errEl.style.color = 'var(--ok)';
+    errEl.textContent = '已儲存';
+    setTimeout(() => { errEl.textContent = ''; errEl.style.color = 'var(--danger)'; }, 2500);
   } catch (e) { errEl.textContent = e.message; }
 });
 
@@ -399,6 +446,7 @@ document.getElementById('deleteClassBtn').addEventListener('click', async () => 
     sel.value = '';
     document.getElementById('newClassFields').classList.remove('hidden');
     document.getElementById('deleteClassBtn').classList.add('hidden');
+    document.getElementById('editClassArea').classList.add('hidden');
   } catch (e) { alert('刪除失敗：' + e.message); }
 });
 
