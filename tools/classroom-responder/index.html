@@ -36,8 +36,13 @@ button, input, select { font-family: inherit; }
 .opt-btn .lab { display:inline-block; width:26px; font-weight:700; color: var(--accent-dark); }
 .opt-btn.selected { border-color: var(--accent); background: #d9f6f4; }
 .opt-btn:disabled { cursor: not-allowed; opacity: .7; }
+.opt-btn.correct { border-color: var(--ok); background: #e0f5e9; opacity: 1; font-weight: 700; }
+.opt-btn.correct .lab { color: var(--ok); }
+.opt-btn.wrong { border-color: var(--danger); background: #fbe4e4; opacity: 1; }
+.opt-btn.wrong .lab { color: var(--danger); }
 .status-tag { display: inline-block; font-size: .74rem; padding: 3px 10px; border-radius: 999px; background: var(--ok); color: #fff; margin-left: 8px; }
 .status-tag.pending { background: var(--text-dim); }
+.status-tag.wrong { background: var(--danger); }
 </style>
 </head>
 <body>
@@ -206,15 +211,11 @@ function startCountdown() {
     if (remain <= 0) {
       clearInterval(countdownTimer);
       document.getElementById('runCountdown').textContent = '已結束';
-      lockAllOptions();
+      renderSubQuestions();
     }
   }
   tick();
   countdownTimer = setInterval(tick, 1000);
-}
-
-function lockAllOptions() {
-  document.querySelectorAll('.opt-btn').forEach(b => b.disabled = true);
 }
 
 function renderSubQuestions() {
@@ -225,13 +226,26 @@ function renderSubQuestions() {
     const card = document.createElement('div');
     card.className = 'subq-card';
     const mine = myResponses[sq.order];
-    let html = '<div class="q-title">小題 ' + sq.order + '：' + sq.content +
-      (mine ? '<span class="status-tag">已作答 ' + mine.selectedAnswer + '</span>' : '<span class="status-tag pending">尚未作答</span>') + '</div>';
+    let statusTag;
+    if (!open) {
+      statusTag = mine
+        ? '<span class="status-tag ' + (mine.isCorrect ? '' : 'wrong') + '">' + (mine.isCorrect ? '答對了' : '答錯了，你選 ' + mine.selectedAnswer) + '</span>'
+        : '<span class="status-tag pending">逾時未作答</span>';
+    } else {
+      statusTag = mine ? '<span class="status-tag">已作答 ' + mine.selectedAnswer + '</span>' : '<span class="status-tag pending">尚未作答</span>';
+    }
+    let html = '<div class="q-title">小題 ' + sq.order + '：' + sq.content + statusTag + '</div>';
     if (sq.imageUrl) html += '<img src="' + sq.imageUrl + '">';
     card.innerHTML = html;
     OPT_LABELS.forEach((l, i) => {
       const btn = document.createElement('button');
-      btn.className = 'opt-btn' + (mine && mine.selectedAnswer === l ? ' selected' : '');
+      let cls = 'opt-btn';
+      if (mine && mine.selectedAnswer === l) cls += ' selected';
+      if (!open) {
+        if (l === sq.correctAnswer) cls += ' correct';
+        else if (mine && mine.selectedAnswer === l) cls += ' wrong';
+      }
+      btn.className = cls;
       btn.disabled = !open;
       btn.innerHTML = '<span class="lab">' + l + '</span>' + (sq.options[i] || '');
       btn.addEventListener('click', () => submitAnswer(sq, l));
@@ -242,7 +256,7 @@ function renderSubQuestions() {
 }
 
 async function submitAnswer(sq, selected) {
-  if (!isRunOpen()) { lockAllOptions(); return; }
+  if (!isRunOpen()) { renderSubQuestions(); return; }
   const startedAtMs = currentRunData.startedAt && currentRunData.startedAt.toMillis ? currentRunData.startedAt.toMillis() : Date.now();
   const timeUsedSeconds = Math.max(0, Math.round((Date.now() - startedAtMs) / 1000));
   const isCorrect = selected === sq.correctAnswer;
