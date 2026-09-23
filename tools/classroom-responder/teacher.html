@@ -153,15 +153,13 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
 
   <div class="card hidden" id="sessionCard">
     <h2>今天的課</h2>
-    <div id="noSessionArea">
-      <div class="field">
-        <label>選一個大題發布</label>
-        <select id="publishBankSelect"></select>
-      </div>
-      <button class="btn" id="publishBtn">開始這一大題</button>
-      <div class="err" id="publishErr"></div>
+    <div class="field">
+      <label>選一個大題發布</label>
+      <select id="publishBankSelect"></select>
     </div>
-    <div id="sessionInfoArea" class="hidden">
+    <button class="btn" id="publishBtn">發布這個大題</button>
+    <div class="err" id="publishErr"></div>
+    <div id="sessionInfoArea" class="hidden" style="margin-top:18px;padding-top:18px;border-top:1px solid var(--border);">
       <div class="row" style="align-items:center;">
         <div>
           <div id="roomLink" style="font-size:.9rem;color:var(--accent-dark);"></div>
@@ -558,12 +556,10 @@ async function checkTodaySession() {
   } else {
     sessionId = null; sessionData = null;
     document.getElementById('sessionInfoArea').classList.add('hidden');
-    document.getElementById('noSessionArea').classList.remove('hidden');
   }
 }
 
 function showSessionInfo() {
-  document.getElementById('noSessionArea').classList.add('hidden');
   document.getElementById('sessionInfoArea').classList.remove('hidden');
   const url = location.origin + location.pathname.replace('teacher.html', 'index.html') + '?r=' + sessionId;
   document.getElementById('roomLink').textContent = '場次代碼：' + sessionId + '　連結：' + url;
