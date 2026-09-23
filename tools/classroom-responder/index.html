@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>課堂應答器</title>
+<style>
+:root {
+  --bg: #eafbfa; --card: #fff; --accent: #0ABAB5; --accent-dark: #078F8B;
+  --text: #17302f; --text-mid: #4f7674; --text-dim: #93b0ae;
+  --border: rgba(0,0,0,.10); --radius: 14px; --danger: #d96060; --ok: #4a9e78;
+}
+html { font-size: 19px; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { min-height: 100%; background: var(--bg); font-family: 'Microsoft JhengHei', 'Noto Sans TC', sans-serif; color: var(--text); }
+button, input, select { font-family: inherit; }
+#header { background: linear-gradient(135deg, var(--accent), var(--accent-dark)); color: #fff; padding: 16px 18px; }
+#header h1 { font-size: 1.1rem; }
+.wrap { max-width: 640px; margin: 0 auto; padding: 16px 14px 60px; }
+.card { background: var(--card); border-radius: var(--radius); box-shadow: 0 2px 12px rgba(0,0,0,.08); padding: 20px; margin-bottom: 16px; }
+.card h2 { font-size: 1.05rem; margin-bottom: 14px; color: var(--text-mid); }
+.field { margin-bottom: 14px; }
+.field label { display: block; font-size: .88rem; font-weight: 600; color: var(--text-mid); margin-bottom: 6px; }
+.field select, .field input { width: 100%; padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 1.05rem; background: #fafafa; }
+.btn { display: block; width: 100%; padding: 14px; border: none; border-radius: 10px; background: var(--accent); color: #fff; font-weight: 700; cursor: pointer; font-size: 1rem; }
+.btn:active { background: var(--accent-dark); }
+.btn:disabled { background: #ccc; cursor: not-allowed; }
+.err { color: var(--danger); font-size: .82rem; margin-top: 8px; }
+.hidden { display: none !important; }
+.hint { font-size: .78rem; color: var(--text-dim); margin-top: 6px; }
+.countdown { font-size: 1.4rem; font-weight: 700; color: var(--accent-dark); text-align: center; }
+.subq-card { border: 1.5px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+.subq-card .q-title { font-weight: 700; margin-bottom: 8px; }
+.subq-card img { max-width: 100%; border-radius: 8px; margin-bottom: 10px; }
+.opt-btn { display: block; width: 100%; text-align: left; padding: 12px 14px; margin-bottom: 8px; border-radius: 10px; border: 1.5px solid var(--border); background: #fafafa; cursor: pointer; font-size: .98rem; }
+.opt-btn .lab { display:inline-block; width:26px; font-weight:700; color: var(--accent-dark); }
+.opt-btn.selected { border-color: var(--accent); background: #d9f6f4; }
+.opt-btn:disabled { cursor: not-allowed; opacity: .7; }
+.status-tag { display: inline-block; font-size: .74rem; padding: 3px 10px; border-radius: 999px; background: var(--ok); color: #fff; margin-left: 8px; }
+.status-tag.pending { background: var(--text-dim); }
+</style>
+</head>
+<body>
+<div id="header"><h1>課堂應答器</h1></div>
+<div class="wrap">
+
+  <div class="card" id="errCard" style="display:none;">
+    <p id="errMsg" style="color:var(--danger);"></p>
+  </div>
+
+  <div class="card hidden" id="joinCard">
+    <h2 id="joinTitle">加入作答</h2>
+    <div class="field">
+      <label>選擇你的座號</label>
+      <select id="seatSelect"></select>
+    </div>
+    <div class="hint" id="seatHint"></div>
+    <button class="btn" id="joinBtn" style="margin-top:14px;">加入</button>
+    <div class="err" id="joinErr"></div>
+  </div>
+
+  <div class="card hidden" id="waitCard">
+    <h2>等待老師發布題目…</h2>
+    <p style="font-size:.85rem;color:var(--text-mid);">目前座號：<b id="mySeatDisplay"></b>（頁面會自動更新，不用重新整理）</p>
+  </div>
+
+  <div class="card hidden" id="runInfoCard">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h2 id="runTitle" style="margin-bottom:0;"></h2>
+      <span class="countdown" id="runCountdown">--:--</span>
+    </div>
+  </div>
+
+  <div id="subqArea"></div>
+
+</div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js';
+import {
+  getFirestore, doc, setDoc, getDoc, getDocs, collection, query, where, orderBy, limit, onSnapshot, serverTimestamp
+} from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCQ5a6CGci369p6s8ES90-duPXZlj6oSXM",
+  authDomain: "classroom-responder.firebaseapp.com",
+  projectId: "classroom-responder",
+  storageBucket: "classroom-responder.firebasestorage.app",
+  messagingSenderId: "648909917784",
+  appId: "1:648909917784:web:29281a92dd32c34656c42d"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+const params = new URLSearchParams(location.search);
+const sessionId = params.get('r');
+const OPT_LABELS = ['A', 'B', 'C', 'D'];
+
+let classId = null, mySeat = null;
+let currentRunBankId = null, currentRunData = null, currentBankSnapshot = null;
+let countdownTimer = null, unsubRun = null;
+let myResponses = {};
+
+function showError(msg) {
+  document.getElementById('errCard').style.display = 'block';
+  document.getElementById('errMsg').textContent = msg;
+}
+
+async function init() {
+  if (!sessionId) { showError('這個連結沒有場次代碼，請重新掃老師的 QR code。'); return; }
+  const sessionSnap = await getDoc(doc(db, 'sessions', sessionId));
+  if (!sessionSnap.exists()) { showError('找不到這個場次，可能代碼有誤，請跟老師確認。'); return; }
+  const session = sessionSnap.data();
+  if (session.status === 'ended') { showError('這堂課已經結束了。'); return; }
+  classId = session.classId;
+
+  const classSnap = await getDoc(doc(db, 'classes', classId));
+  const classData = classSnap.data();
+  document.getElementById('joinTitle').textContent = (classData ? classData.name : '') + '　加入作答';
+
+  const savedSeat = localStorage.getItem('cr_seat_' + sessionId);
+  const rosterSnap = await getDocs(collection(db, 'classes', classId, 'students'));
+  const roster = rosterSnap.docs.map(d => d.data().seatNo || d.id).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+  if (savedSeat && roster.includes(savedSeat)) {
+    mySeat = savedSeat;
+    await markJoined();
+    showWaitOrRun();
+  } else {
+    const sel = document.getElementById('seatSelect');
+    const joinedSnap = await getDocs(collection(db, 'sessions', sessionId, 'joined'));
+    const joinedSet = new Set(joinedSnap.docs.map(d => d.id));
+    roster.forEach(seatNo => {
+      const opt = document.createElement('option');
+      opt.value = seatNo;
+      opt.textContent = seatNo + ' 號' + (joinedSet.has(seatNo) ? '（已有人加入）' : '');
+      sel.appendChild(opt);
+    });
+    document.getElementById('seatHint').textContent = '如果看到「已有人加入」但不是你本人在用，請告訴老師。';
+    document.getElementById('joinCard').classList.remove('hidden');
+  }
+}
+
+document.getElementById('joinBtn').addEventListener('click', async () => {
+  const sel = document.getElementById('seatSelect');
+  mySeat = sel.value;
+  if (!mySeat) { document.getElementById('joinErr').textContent = '請選擇座號'; return; }
+  localStorage.setItem('cr_seat_' + sessionId, mySeat);
+  await markJoined();
+  document.getElementById('joinCard').classList.add('hidden');
+  showWaitOrRun();
+});
+
+async function markJoined() {
+  await setDoc(doc(db, 'sessions', sessionId, 'joined', mySeat), { joinedAt: serverTimestamp() }, { merge: true });
+}
+
+async function showWaitOrRun() {
+  document.getElementById('mySeatDisplay').textContent = mySeat + ' 號';
+  const runsRef = collection(db, 'sessions', sessionId, 'runs');
+  if (unsubRun) unsubRun();
+  unsubRun = onSnapshot(query(runsRef, orderBy('startedAt', 'desc'), limit(1)), async snap => {
+    if (snap.empty) {
+      document.getElementById('waitCard').classList.remove('hidden');
+      document.getElementById('runInfoCard').classList.add('hidden');
+      document.getElementById('subqArea').innerHTML = '';
+      return;
+    }
+    const runDoc = snap.docs[0];
+    currentRunBankId = runDoc.id;
+    currentRunData = runDoc.data();
+    currentBankSnapshot = currentRunData;
+    document.getElementById('waitCard').classList.add('hidden');
+    document.getElementById('runInfoCard').classList.remove('hidden');
+    document.getElementById('runTitle').textContent = currentRunData.title;
+    await loadMyResponses();
+    startCountdown();
+    renderSubQuestions();
+  });
+}
+
+async function loadMyResponses() {
+  myResponses = {};
+  const respSnap = await getDocs(query(
+    collection(db, 'sessions', sessionId, 'responses'),
+    where('bankId', '==', currentRunBankId), where('seatNo', '==', mySeat)
+  ));
+  respSnap.docs.forEach(d => { myResponses[d.data().order] = d.data(); });
+}
+
+function isRunOpen() {
+  if (currentRunData.endedAt) return false;
+  const startedAtMs = currentRunData.startedAt && currentRunData.startedAt.toMillis ? currentRunData.startedAt.toMillis() : Date.now();
+  return Date.now() < startedAtMs + currentBankSnapshot.timeLimitSeconds * 1000;
+}
+
+function startCountdown() {
+  if (countdownTimer) clearInterval(countdownTimer);
+  const startedAtMs = currentRunData.startedAt && currentRunData.startedAt.toMillis ? currentRunData.startedAt.toMillis() : Date.now();
+  const deadline = startedAtMs + currentBankSnapshot.timeLimitSeconds * 1000;
+  function tick() {
+    const remain = Math.max(0, Math.floor((deadline - Date.now()) / 1000));
+    const mm = String(Math.floor(remain / 60)).padStart(2, '0');
+    const ss = String(remain % 60).padStart(2, '0');
+    document.getElementById('runCountdown').textContent = mm + ':' + ss;
+    if (remain <= 0) {
+      clearInterval(countdownTimer);
+      document.getElementById('runCountdown').textContent = '已結束';
+      lockAllOptions();
+    }
+  }
+  tick();
+  countdownTimer = setInterval(tick, 1000);
+}
+
+function lockAllOptions() {
+  document.querySelectorAll('.opt-btn').forEach(b => b.disabled = true);
+}
+
+function renderSubQuestions() {
+  const area = document.getElementById('subqArea');
+  area.innerHTML = '';
+  const open = isRunOpen();
+  currentBankSnapshot.subQuestions.forEach(sq => {
+    const card = document.createElement('div');
+    card.className = 'subq-card';
+    const mine = myResponses[sq.order];
+    let html = '<div class="q-title">小題 ' + sq.order + '：' + sq.content +
+      (mine ? '<span class="status-tag">已作答 ' + mine.selectedAnswer + '</span>' : '<span class="status-tag pending">尚未作答</span>') + '</div>';
+    if (sq.imageUrl) html += '<img src="' + sq.imageUrl + '">';
+    card.innerHTML = html;
+    OPT_LABELS.forEach((l, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'opt-btn' + (mine && mine.selectedAnswer === l ? ' selected' : '');
+      btn.disabled = !open;
+      btn.innerHTML = '<span class="lab">' + l + '</span>' + (sq.options[i] || '');
+      btn.addEventListener('click', () => submitAnswer(sq, l));
+      card.appendChild(btn);
+    });
+    area.appendChild(card);
+  });
+}
+
+async function submitAnswer(sq, selected) {
+  if (!isRunOpen()) { lockAllOptions(); return; }
+  const startedAtMs = currentRunData.startedAt && currentRunData.startedAt.toMillis ? currentRunData.startedAt.toMillis() : Date.now();
+  const timeUsedSeconds = Math.max(0, Math.round((Date.now() - startedAtMs) / 1000));
+  const isCorrect = selected === sq.correctAnswer;
+  const respId = mySeat + '_' + sq.order;
+  await setDoc(doc(db, 'sessions', sessionId, 'responses', respId), {
+    seatNo: mySeat, bankId: currentRunBankId, order: sq.order,
+    selectedAnswer: selected, isCorrect, timeUsedSeconds, answeredAt: serverTimestamp()
+  });
+  myResponses[sq.order] = { selectedAnswer: selected, isCorrect, timeUsedSeconds };
+  renderSubQuestions();
+}
+
+init();
+</script>
+</body>
+</html>

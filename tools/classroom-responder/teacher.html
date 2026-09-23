@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>課堂應答器 — 老師後台</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+:root {
+  --bg: #eafbfa; --card: #fff; --accent: #0ABAB5; --accent-dark: #078F8B;
+  --text: #17302f; --text-mid: #4f7674; --text-dim: #93b0ae;
+  --border: rgba(0,0,0,.10); --radius: 14px; --danger: #d96060; --ok: #4a9e78;
+}
+html { font-size: 19px; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { min-height: 100%; background: var(--bg); font-family: 'Microsoft JhengHei', 'Noto Sans TC', sans-serif; color: var(--text); }
+button, input, select, textarea { font-family: inherit; }
+#header { background: linear-gradient(135deg, var(--accent), var(--accent-dark)); color: #fff; padding: 18px 20px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+#header h1 { font-size: 1.25rem; }
+.wrap { max-width: 1200px; margin: 0 auto; padding: 20px 16px 60px; }
+.card { background: var(--card); border-radius: var(--radius); box-shadow: 0 2px 12px rgba(0,0,0,.08); padding: 22px; margin-bottom: 18px; }
+.card h2 { font-size: 1.15rem; margin-bottom: 16px; color: var(--text-mid); }
+.field { margin-bottom: 16px; }
+.field label { display: block; font-size: .9rem; font-weight: 600; color: var(--text-mid); margin-bottom: 7px; }
+.field input, .field textarea, .field select { width: 100%; padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 1.05rem; background: #fafafa; }
+.field input:not([type=number]):not([type=checkbox]), .field select { max-width: 520px; }
+.field textarea { min-height: 80px; resize: vertical; }
+.btn { display: inline-block; padding: 13px 22px; border: none; border-radius: 10px; background: var(--accent); color: #fff; font-weight: 700; cursor: pointer; font-size: 1rem; }
+.btn:active { background: var(--accent-dark); }
+.btn.secondary { background: #eee; color: var(--text); }
+.btn:disabled { background: #ccc; cursor: not-allowed; }
+.btn.small { padding: 7px 14px; font-size: .85rem; }
+.err { color: var(--danger); font-size: .82rem; margin-top: 8px; }
+.hidden { display: none !important; }
+.row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.row > * { flex: 1; min-width: 140px; }
+#roomLink { font-size: .9rem; color: var(--accent-dark); word-break: break-all; }
+#qrBox { background: #fff; padding: 8px; border-radius: 10px; display: inline-block; }
+.list-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: .88rem; gap: 10px; }
+.badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: .74rem; background: var(--ok); color: #fff; }
+.badge.warn { background: var(--danger); }
+.subq-block { border: 1.5px dashed var(--border); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+.subq-block h4 { font-size: .9rem; color: var(--text-mid); margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center; }
+.opt-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.opt-row span { width: 22px; font-weight: 700; color: var(--accent-dark); }
+.opt-row input[type=radio] { width: auto; }
+.bar-wrap { margin-bottom: 14px; }
+.bar-wrap .bar-q { font-weight: 600; margin-bottom: 6px; font-size: .92rem; }
+.bar-line { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.bar-line .bar-label { width: 24px; font-weight: 700; color: var(--accent-dark); font-size: .85rem; }
+.bar-line .bar-track { flex: 1; background: #eee; border-radius: 6px; overflow: hidden; height: 20px; position: relative; }
+.bar-line .bar-fill { background: var(--accent); height: 100%; transition: width .3s; }
+.bar-line .bar-count { width: 34px; text-align: right; font-size: .82rem; color: var(--text-mid); }
+.bar-line.correct .bar-fill { background: var(--ok); }
+table.lb { width: 100%; border-collapse: collapse; font-size: .9rem; }
+table.lb th, table.lb td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+table.lb th { color: var(--text-mid); font-size: .78rem; }
+.countdown { font-size: 1.6rem; font-weight: 700; color: var(--accent-dark); }
+</style>
+</head>
+<body>
+<div id="header">
+  <h1>課堂應答器 — 老師後台</h1>
+  <button id="backToClassBtn" class="hidden" style="border:1px solid rgba(255,255,255,.6);background:rgba(255,255,255,.15);color:#fff;padding:8px 14px;border-radius:10px;font-size:.85rem;cursor:pointer;white-space:nowrap;">← 換班級</button>
+</div>
+<div class="wrap">
+
+  <div class="card" id="loginCard">
+    <h2>登入</h2>
+    <button class="btn" id="loginBtn">使用 Google 登入</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+
+  <div class="card hidden" id="adminCard">
+    <h2>授權老師管理（只有你看得到這張卡片）</h2>
+    <div id="teacherList" style="font-size:.9rem;margin-bottom:14px;"></div>
+    <div class="row">
+      <input id="newTeacherEmail" placeholder="老師的 Google 信箱">
+      <input id="newTeacherSubjects" placeholder="科別，逗號分隔，例如 地科,生物">
+      <button class="btn secondary" id="addTeacherBtn" style="flex:0 0 auto;">新增授權</button>
+    </div>
+    <div class="err" id="adminErr"></div>
+  </div>
+
+  <div class="card hidden" id="classCard">
+    <h2>班級</h2>
+    <div class="field">
+      <label>選擇既有班級</label>
+      <select id="classSelect"><option value="">— 新增班級 —</option></select>
+    </div>
+    <div id="newClassFields">
+      <div class="field">
+        <label>新班級名稱</label>
+        <input id="newClassName" placeholder="例如 三年一班">
+      </div>
+      <div class="field">
+        <label>科別</label>
+        <select id="newClassSubject"></select>
+      </div>
+    </div>
+    <div class="row" style="align-items:center;">
+      <button class="btn" id="useClassBtn">使用這個班級</button>
+      <button class="btn secondary" id="deleteClassBtn" style="color:var(--danger);flex:0 0 auto;">刪除這個班級</button>
+    </div>
+    <div class="err" id="classErr"></div>
+  </div>
+
+  <div class="card hidden" id="rosterCard">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <h2 style="margin-bottom:0;">班級名單</h2>
+      <div>
+        <span id="rosterCount" style="font-size:.85rem;color:var(--text-mid);"></span>
+        <button class="btn secondary small" id="toggleRosterBtn" style="margin-left:10px;">展開名單</button>
+      </div>
+    </div>
+    <div id="rosterEditArea" class="hidden" style="margin-top:14px;">
+      <div class="field">
+        <label>座號（匿名，不用姓名/學號）——可以打範圍例如 1-45，或一行一個、逗號分隔都可以</label>
+        <textarea id="rosterInput" placeholder="1-45"></textarea>
+      </div>
+      <button class="btn" id="saveRosterBtn">儲存名單</button>
+      <div class="err" id="rosterErr"></div>
+    </div>
+  </div>
+
+  <div class="card hidden" id="bankListCard">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <h2 style="margin-bottom:0;">題庫（同科別老師共用）</h2>
+      <button class="btn secondary small" id="newBankToggleBtn">＋ 新增大題</button>
+    </div>
+    <div id="bankList" style="font-size:.9rem;margin-top:10px;"></div>
+  </div>
+
+  <div class="card hidden" id="newBankCard">
+    <h2>新增大題</h2>
+    <div class="field">
+      <label>大題標題</label>
+      <input id="bankTitle" placeholder="例如：地層構造判讀">
+    </div>
+    <div class="field">
+      <label>限時（秒）</label>
+      <input id="bankTimeLimit" type="number" min="10" value="300" style="max-width:160px;">
+    </div>
+    <div id="subqList"></div>
+    <button class="btn secondary small" id="addSubqBtn" style="margin-bottom:14px;">＋ 新增小題</button>
+    <div>
+      <button class="btn" id="saveBankBtn">儲存這個大題</button>
+      <button class="btn secondary" id="cancelBankBtn">取消</button>
+    </div>
+    <div class="err" id="bankErr"></div>
+  </div>
+
+  <div class="card hidden" id="sessionCard">
+    <h2>今天的課</h2>
+    <div id="noSessionArea">
+      <div class="field">
+        <label>選一個大題發布</label>
+        <select id="publishBankSelect"></select>
+      </div>
+      <button class="btn" id="publishBtn">開始這一大題</button>
+      <div class="err" id="publishErr"></div>
+    </div>
+    <div id="sessionInfoArea" class="hidden">
+      <div class="row" style="align-items:center;">
+        <div>
+          <div id="roomLink" style="font-size:.9rem;color:var(--accent-dark);"></div>
+          <button class="btn secondary small" id="copyLinkBtn" style="margin-top:8px;">複製連結</button>
+          <div id="qrBox" style="margin-top:10px;"></div>
+        </div>
+      </div>
+      <div style="margin-top:16px;">
+        <button class="btn secondary" id="endSessionBtn" style="color:var(--danger);">結束今天的課</button>
+        <button class="btn secondary" id="showLeaderboardBtn">看排行榜</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card hidden" id="runCard">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h2 style="margin-bottom:0;" id="runTitle">進行中的大題</h2>
+      <span class="countdown" id="runCountdown">--:--</span>
+    </div>
+    <div style="margin:10px 0;font-size:.85rem;color:var(--text-mid);">
+      已加入 <b id="joinedCount">0</b> / <span id="rosterTotal">0</span> 人
+    </div>
+    <div id="voteBoard" style="margin-top:14px;"></div>
+    <div style="margin-top:16px;">
+      <button class="btn secondary" id="endRunBtn" style="color:var(--danger);">結束這一大題</button>
+      <button class="btn secondary" id="newRunBtn">發布下一大題</button>
+    </div>
+  </div>
+
+  <div class="card hidden" id="leaderboardCard">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h2 style="margin-bottom:0;">排行榜</h2>
+      <button class="btn secondary small" id="recalcLeaderboardBtn">重新計算</button>
+    </div>
+    <table class="lb" id="lbTable" style="margin-top:12px;">
+      <thead><tr><th>名次</th><th>座號</th><th>答對</th><th>作答數</th><th>總耗時</th></tr></thead>
+      <tbody id="lbBody"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js';
+import {
+  getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut
+} from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js';
+import {
+  getFirestore, doc, setDoc, updateDoc, getDoc, getDocs, collection, query, where, orderBy, limit,
+  writeBatch, onSnapshot, deleteDoc, serverTimestamp, Timestamp
+} from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCQ5a6CGci369p6s8ES90-duPXZlj6oSXM",
+  authDomain: "classroom-responder.firebaseapp.com",
+  projectId: "classroom-responder",
+  storageBucket: "classroom-responder.firebasestorage.app",
+  messagingSenderId: "648909917784",
+  appId: "1:648909917784:web:29281a92dd32c34656c42d"
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+const ROOT_ADMIN_EMAIL = 'nicolehsu2004@gmail.com';
+const OPT_LABELS = ['A', 'B', 'C', 'D'];
+
+let myEmail = null, myUid = null, mySubjects = [], isRoot = false;
+let classId = null, classData = null;
+let sessionId = null, sessionData = null;
+let currentRunBankId = null, currentRunData = null, currentBankSnapshot = null;
+let countdownTimer = null, unsubRun = null, unsubJoined = null, unsubResponses = null;
+let responsesCache = [];
+
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+document.getElementById('loginBtn').addEventListener('click', async () => {
+  try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+  catch (e) { document.getElementById('loginErr').textContent = e.message; }
+});
+
+onAuthStateChanged(auth, async user => {
+  if (!user) return;
+  myEmail = (user.email || '').toLowerCase();
+  myUid = user.uid;
+  isRoot = myEmail === ROOT_ADMIN_EMAIL;
+  if (isRoot) {
+    mySubjects = null; // root 視同全科
+  } else {
+    const tSnap = await getDoc(doc(db, 'teachers', myEmail));
+    if (!tSnap.exists()) {
+      document.getElementById('loginErr').textContent = '這個帳號（' + user.email + '）還沒被授權使用，請聯絡管理者新增這個信箱。';
+      await signOut(auth);
+      return;
+    }
+    mySubjects = tSnap.data().subjects || [];
+  }
+  document.getElementById('loginCard').classList.add('hidden');
+  document.getElementById('classCard').classList.remove('hidden');
+  document.getElementById('backToClassBtn').classList.remove('hidden');
+  if (isRoot) {
+    document.getElementById('adminCard').classList.remove('hidden');
+    loadTeacherList();
+  }
+  const subjSel = document.getElementById('newClassSubject');
+  subjSel.innerHTML = '';
+  (mySubjects || ['（管理者：請先在授權清單建立科別後再開班）']).forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s; opt.textContent = s;
+    subjSel.appendChild(opt);
+  });
+  const snap = await getDocs(query(collection(db, 'classes'), where('teacherId', '==', myUid)));
+  const sel = document.getElementById('classSelect');
+  snap.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d.id; opt.textContent = d.data().name + '（' + d.data().subject + '）';
+    sel.appendChild(opt);
+  });
+});
+
+async function loadTeacherList() {
+  const listEl = document.getElementById('teacherList');
+  listEl.innerHTML = '讀取中…';
+  const snap = await getDocs(collection(db, 'teachers'));
+  listEl.innerHTML = '';
+  if (snap.empty) {
+    listEl.innerHTML = '<p style="color:var(--text-mid);">目前只有你（管理者）能登入，上面新增其他老師的信箱＋科別。</p>';
+    return;
+  }
+  snap.forEach(d => {
+    const row = document.createElement('div');
+    row.className = 'list-row';
+    const span = document.createElement('span');
+    span.textContent = d.id + '　（' + (d.data().subjects || []).join('、') + '）';
+    const removeBtn = document.createElement('button');
+    removeBtn.textContent = '移除';
+    removeBtn.style.cssText = 'border:1px solid var(--border);background:#fff;color:var(--danger);font-size:.78rem;padding:3px 10px;border-radius:999px;cursor:pointer;';
+    removeBtn.addEventListener('click', async () => {
+      if (!confirm('確定要移除 ' + d.id + ' 的授權嗎？')) return;
+      await deleteDoc(doc(db, 'teachers', d.id));
+      loadTeacherList();
+    });
+    row.appendChild(span); row.appendChild(removeBtn);
+    listEl.appendChild(row);
+  });
+}
+
+document.getElementById('addTeacherBtn').addEventListener('click', async () => {
+  const emailInput = document.getElementById('newTeacherEmail');
+  const subjInput = document.getElementById('newTeacherSubjects');
+  const errEl = document.getElementById('adminErr');
+  errEl.textContent = '';
+  const email = emailInput.value.trim().toLowerCase();
+  const subjects = subjInput.value.split(/[,，]+/).map(s => s.trim()).filter(Boolean);
+  if (!email || !email.includes('@')) { errEl.textContent = '請輸入完整的信箱'; return; }
+  if (!subjects.length) { errEl.textContent = '請至少輸入一個科別'; return; }
+  try {
+    await setDoc(doc(db, 'teachers', email), { subjects, addedAt: serverTimestamp() });
+    emailInput.value = ''; subjInput.value = '';
+    loadTeacherList();
+  } catch (e) { errEl.textContent = e.message; }
+});
+
+document.getElementById('backToClassBtn').addEventListener('click', () => {
+  document.getElementById('classCard').scrollIntoView({ behavior: 'smooth' });
+});
+
+document.getElementById('classSelect').addEventListener('change', e => {
+  document.getElementById('newClassFields').classList.toggle('hidden', !!e.target.value);
+  document.getElementById('deleteClassBtn').classList.toggle('hidden', !e.target.value);
+});
+document.getElementById('deleteClassBtn').classList.add('hidden');
+
+function parseSeatNos(text) {
+  const tokens = text.split(/[,，\n]+/).map(t => t.trim()).filter(Boolean);
+  const seats = new Set();
+  tokens.forEach(tok => {
+    const rangeMatch = tok.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (rangeMatch) {
+      let start = parseInt(rangeMatch[1], 10), end = parseInt(rangeMatch[2], 10);
+      if (start > end) { const t = start; start = end; end = t; }
+      for (let i = start; i <= end; i++) seats.add(String(i));
+    } else { seats.add(tok); }
+  });
+  return [...seats];
+}
+
+document.getElementById('useClassBtn').addEventListener('click', async () => {
+  const sel = document.getElementById('classSelect');
+  const errEl = document.getElementById('classErr');
+  errEl.textContent = '';
+  try {
+    if (sel.value) {
+      classId = sel.value;
+      classData = (await getDoc(doc(db, 'classes', classId))).data();
+    } else {
+      const name = document.getElementById('newClassName').value.trim();
+      const subject = document.getElementById('newClassSubject').value;
+      if (!name) { errEl.textContent = '請輸入班級名稱'; return; }
+      if (!subject) { errEl.textContent = '請先確認科別授權'; return; }
+      const ref = doc(collection(db, 'classes'));
+      classData = { name, subject, teacherId: myUid, createdAt: serverTimestamp() };
+      await setDoc(ref, classData);
+      classId = ref.id;
+    }
+    document.getElementById('rosterCard').classList.remove('hidden');
+    document.getElementById('bankListCard').classList.remove('hidden');
+    document.getElementById('sessionCard').classList.remove('hidden');
+    await loadRosterIntoTextarea();
+    await loadBankList();
+    await loadPublishSelect();
+    await checkTodaySession();
+  } catch (e) { errEl.textContent = e.message; }
+});
+
+document.getElementById('deleteClassBtn').addEventListener('click', async () => {
+  const sel = document.getElementById('classSelect');
+  const targetClassId = sel.value;
+  if (!targetClassId) return;
+  const className = sel.options[sel.selectedIndex].textContent;
+  if (!confirm('確定要刪除「' + className + '」嗎？班級名單會一起刪掉（該班歷史的課堂紀錄不會刪，但會找不到入口），不能復原。')) return;
+  try {
+    const studentsSnap = await getDocs(collection(db, 'classes', targetClassId, 'students'));
+    const batch = writeBatch(db);
+    studentsSnap.docs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+    await deleteDoc(doc(db, 'classes', targetClassId));
+    sel.remove(sel.selectedIndex);
+    sel.value = '';
+    document.getElementById('newClassFields').classList.remove('hidden');
+    document.getElementById('deleteClassBtn').classList.add('hidden');
+  } catch (e) { alert('刪除失敗：' + e.message); }
+});
+
+async function loadRosterIntoTextarea() {
+  const rSnap = await getDocs(collection(db, 'classes', classId, 'students'));
+  const students = rSnap.docs.map(d => d.data().seatNo || d.id);
+  students.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  document.getElementById('rosterInput').value = students.join(', ');
+  document.getElementById('rosterCount').textContent = '目前已有 ' + students.length + ' 個座號';
+  const editArea = document.getElementById('rosterEditArea');
+  editArea.classList.toggle('hidden', students.length > 0);
+  document.getElementById('toggleRosterBtn').textContent = students.length > 0 ? '展開名單' : '收合名單';
+}
+
+document.getElementById('toggleRosterBtn').addEventListener('click', () => {
+  const editArea = document.getElementById('rosterEditArea');
+  const nowHidden = editArea.classList.toggle('hidden');
+  document.getElementById('toggleRosterBtn').textContent = nowHidden ? '展開名單' : '收合名單';
+});
+
+document.getElementById('saveRosterBtn').addEventListener('click', async () => {
+  const errEl = document.getElementById('rosterErr');
+  errEl.textContent = '';
+  const seatNos = parseSeatNos(document.getElementById('rosterInput').value);
+  if (!seatNos.length) { errEl.textContent = '請至少輸入一個座號，例如 1-45'; return; }
+  try {
+    const existingSnap = await getDocs(collection(db, 'classes', classId, 'students'));
+    const wanted = new Set(seatNos);
+    const toDelete = existingSnap.docs.filter(d => !wanted.has(d.id));
+    const ops = [...toDelete.map(d => ({ type: 'delete', ref: d.ref })), ...seatNos.map(seatNo => ({ type: 'set', ref: doc(db, 'classes', classId, 'students', seatNo), data: { seatNo } }))];
+    for (let i = 0; i < ops.length; i += 450) {
+      const batch = writeBatch(db);
+      ops.slice(i, i + 450).forEach(op => op.type === 'delete' ? batch.delete(op.ref) : batch.set(op.ref, op.data));
+      await batch.commit();
+    }
+    await loadRosterIntoTextarea();
+  } catch (e) { errEl.textContent = e.message; }
+});
+
+// ---------- 題庫 ----------
+
+function subqBlockHtml(idx) {
+  return `
+  <div class="subq-block" data-idx="${idx}">
+    <h4>小題 ${idx + 1} <button type="button" class="btn secondary small removeSubqBtn">刪除這小題</button></h4>
+    <div class="field"><label>題目內容</label><textarea class="subq-content" placeholder="小題文字"></textarea></div>
+    <div class="field"><label>圖片網址（選填）</label><input class="subq-image" placeholder="https://...（可放這個 repo 的 images/ 或外部圖床）"></div>
+    ${OPT_LABELS.map(l => `<div class="opt-row"><span>${l}</span><input class="subq-opt" data-label="${l}" placeholder="選項 ${l}"><input type="radio" name="correct-${idx}" class="subq-correct" value="${l}" title="正解"></div>`).join('')}
+  </div>`;
+}
+
+function addSubqBlock() {
+  const list = document.getElementById('subqList');
+  const idx = list.children.length;
+  const div = document.createElement('div');
+  div.innerHTML = subqBlockHtml(idx);
+  const block = div.firstElementChild;
+  block.querySelector('.removeSubqBtn').addEventListener('click', () => block.remove());
+  list.appendChild(block);
+}
+
+document.getElementById('newBankToggleBtn').addEventListener('click', () => {
+  document.getElementById('newBankCard').classList.remove('hidden');
+  document.getElementById('subqList').innerHTML = '';
+  addSubqBlock();
+  document.getElementById('newBankCard').scrollIntoView({ behavior: 'smooth' });
+});
+document.getElementById('addSubqBtn').addEventListener('click', addSubqBlock);
+document.getElementById('cancelBankBtn').addEventListener('click', () => {
+  document.getElementById('newBankCard').classList.add('hidden');
+});
+
+document.getElementById('saveBankBtn').addEventListener('click', async () => {
+  const errEl = document.getElementById('bankErr');
+  errEl.textContent = '';
+  const title = document.getElementById('bankTitle').value.trim();
+  const timeLimitSeconds = parseInt(document.getElementById('bankTimeLimit').value || '0', 10);
+  if (!title) { errEl.textContent = '請輸入大題標題'; return; }
+  if (!timeLimitSeconds || timeLimitSeconds < 10) { errEl.textContent = '限時至少 10 秒'; return; }
+  const blocks = [...document.getElementById('subqList').children];
+  if (!blocks.length) { errEl.textContent = '請至少新增一個小題'; return; }
+  const subQuestions = [];
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    const content = b.querySelector('.subq-content').value.trim();
+    const imageUrl = b.querySelector('.subq-image').value.trim();
+    const opts = [...b.querySelectorAll('.subq-opt')].map(o => o.value.trim());
+    const correctEl = b.querySelector('.subq-correct:checked');
+    if (!content) { errEl.textContent = '小題 ' + (i + 1) + ' 請填題目內容'; return; }
+    if (opts.some(o => !o)) { errEl.textContent = '小題 ' + (i + 1) + ' 請填滿 A-D 四個選項'; return; }
+    if (!correctEl) { errEl.textContent = '小題 ' + (i + 1) + ' 請選正解'; return; }
+    subQuestions.push({ order: i + 1, content, imageUrl: imageUrl || null, options: opts, correctAnswer: correctEl.value });
+  }
+  try {
+    const ref = doc(collection(db, 'questionBanks'));
+    await setDoc(ref, {
+      subject: classData.subject, title, timeLimitSeconds, subQuestions,
+      createdBy: myUid, createdByEmail: myEmail, createdAt: serverTimestamp()
+    });
+    document.getElementById('newBankCard').classList.add('hidden');
+    await loadBankList();
+    await loadPublishSelect();
+  } catch (e) { errEl.textContent = e.message; }
+});
+
+async function loadBankList() {
+  const listEl = document.getElementById('bankList');
+  listEl.innerHTML = '讀取中…';
+  const snap = await getDocs(query(collection(db, 'questionBanks'), where('subject', '==', classData.subject)));
+  listEl.innerHTML = '';
+  if (snap.empty) {
+    listEl.innerHTML = '<p style="color:var(--text-mid);">這個科別還沒有題庫，按上面「新增大題」開始第一個。</p>';
+    return;
+  }
+  snap.forEach(d => {
+    const data = d.data();
+    const row = document.createElement('div');
+    row.className = 'list-row';
+    row.innerHTML = '<span>' + data.title + '　<span style="color:var(--text-dim);">（' + data.subQuestions.length + ' 小題，限時 ' + data.timeLimitSeconds + ' 秒，' + (data.createdByEmail || '') + '）</span></span>';
+    listEl.appendChild(row);
+  });
+}
+
+async function loadPublishSelect() {
+  const sel = document.getElementById('publishBankSelect');
+  sel.innerHTML = '';
+  const snap = await getDocs(query(collection(db, 'questionBanks'), where('subject', '==', classData.subject)));
+  if (snap.empty) {
+    sel.innerHTML = '<option value="">（尚無題庫）</option>';
+    return;
+  }
+  snap.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d.id; opt.textContent = d.data().title;
+    sel.appendChild(opt);
+  });
+}
+
+// ---------- Session / Run ----------
+
+function randomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+
+async function checkTodaySession() {
+  const snap = await getDocs(query(
+    collection(db, 'sessions'), where('classId', '==', classId), where('date', '==', todayStr()), where('status', '==', 'active')
+  ));
+  if (!snap.empty) {
+    sessionId = snap.docs[0].id;
+    sessionData = snap.docs[0].data();
+    showSessionInfo();
+    await watchActiveRun();
+  } else {
+    sessionId = null; sessionData = null;
+    document.getElementById('sessionInfoArea').classList.add('hidden');
+    document.getElementById('noSessionArea').classList.remove('hidden');
+  }
+}
+
+function showSessionInfo() {
+  document.getElementById('noSessionArea').classList.add('hidden');
+  document.getElementById('sessionInfoArea').classList.remove('hidden');
+  const url = location.origin + location.pathname.replace('teacher.html', 'index.html') + '?r=' + sessionId;
+  document.getElementById('roomLink').textContent = '場次代碼：' + sessionId + '　連結：' + url;
+  document.getElementById('copyLinkBtn').onclick = async () => {
+    try { await navigator.clipboard.writeText(url); } catch (e) { alert('複製失敗，請手動選取：' + url); }
+  };
+  document.getElementById('qrBox').innerHTML = '';
+  new QRCode(document.getElementById('qrBox'), { text: url, width: 140, height: 140 });
+}
+
+document.getElementById('publishBtn').addEventListener('click', async () => {
+  const errEl = document.getElementById('publishErr');
+  errEl.textContent = '';
+  const bankId = document.getElementById('publishBankSelect').value;
+  if (!bankId) { errEl.textContent = '請先建立題庫'; return; }
+  try {
+    const rosterCheck = await getDocs(collection(db, 'classes', classId, 'students'));
+    if (rosterCheck.empty) { errEl.textContent = '這個班級還沒有名單，請先儲存名單'; return; }
+    const bankSnap = await getDoc(doc(db, 'questionBanks', bankId));
+    const bank = bankSnap.data();
+
+    if (!sessionId) {
+      const code = randomCode();
+      sessionData = { classId, teacherId: myUid, date: todayStr(), status: 'active', createdAt: serverTimestamp() };
+      await setDoc(doc(db, 'sessions', code), sessionData);
+      sessionId = code;
+      showSessionInfo();
+    }
+    await setDoc(doc(db, 'sessions', sessionId, 'runs', bankId), {
+      title: bank.title, timeLimitSeconds: bank.timeLimitSeconds, subQuestions: bank.subQuestions,
+      startedAt: serverTimestamp(), endedAt: null
+    });
+    await watchActiveRun();
+  } catch (e) { errEl.textContent = e.message; }
+});
+
+async function watchActiveRun() {
+  const runsSnap = await getDocs(query(collection(db, 'sessions', sessionId, 'runs'), orderBy('startedAt', 'desc'), limit(1)));
+  if (runsSnap.empty) return;
+  const runDoc = runsSnap.docs[0];
+  currentRunBankId = runDoc.id;
+  currentBankSnapshot = runDoc.data();
+  openRunBoard();
+}
+
+function openRunBoard() {
+  document.getElementById('runCard').classList.remove('hidden');
+  document.getElementById('runTitle').textContent = currentBankSnapshot.title;
+
+  if (unsubRun) unsubRun();
+  unsubRun = onSnapshot(doc(db, 'sessions', sessionId, 'runs', currentRunBankId), snap => {
+    currentRunData = snap.data();
+    if (!currentRunData) return;
+    startCountdown();
+  });
+
+  if (unsubJoined) unsubJoined();
+  getDocs(collection(db, 'classes', classId, 'students')).then(rosterSnap => {
+    document.getElementById('rosterTotal').textContent = rosterSnap.size;
+    unsubJoined = onSnapshot(collection(db, 'sessions', sessionId, 'joined'), snap => {
+      document.getElementById('joinedCount').textContent = snap.size;
+    });
+  });
+
+  if (unsubResponses) unsubResponses();
+  unsubResponses = onSnapshot(
+    query(collection(db, 'sessions', sessionId, 'responses'), where('bankId', '==', currentRunBankId)),
+    snap => { responsesCache = snap.docs.map(d => d.data()); renderVoteBoard(); }
+  );
+}
+
+function startCountdown() {
+  if (countdownTimer) clearInterval(countdownTimer);
+  const startedAtMs = currentRunData.startedAt && currentRunData.startedAt.toMillis ? currentRunData.startedAt.toMillis() : Date.now();
+  const deadline = startedAtMs + currentBankSnapshot.timeLimitSeconds * 1000;
+  function tick() {
+    const remain = Math.max(0, Math.floor((deadline - Date.now()) / 1000));
+    const mm = String(Math.floor(remain / 60)).padStart(2, '0');
+    const ss = String(remain % 60).padStart(2, '0');
+    document.getElementById('runCountdown').textContent = mm + ':' + ss;
+    if (remain <= 0 || currentRunData.endedAt) {
+      clearInterval(countdownTimer);
+      document.getElementById('runCountdown').textContent = '已結束';
+    }
+  }
+  tick();
+  countdownTimer = setInterval(tick, 1000);
+}
+
+function renderVoteBoard() {
+  const board = document.getElementById('voteBoard');
+  board.innerHTML = '';
+  currentBankSnapshot.subQuestions.forEach(sq => {
+    const wrap = document.createElement('div');
+    wrap.className = 'bar-wrap';
+    const answers = responsesCache.filter(r => r.order === sq.order);
+    const total = answers.length || 1;
+    const counts = { A: 0, B: 0, C: 0, D: 0 };
+    answers.forEach(a => { if (counts[a.selectedAnswer] !== undefined) counts[a.selectedAnswer]++; });
+    let html = '<div class="bar-q">小題 ' + sq.order + '：' + sq.content + '</div>';
+    OPT_LABELS.forEach(l => {
+      const pct = Math.round((counts[l] / total) * 100);
+      const isCorrect = l === sq.correctAnswer;
+      html += '<div class="bar-line' + (isCorrect ? ' correct' : '') + '"><span class="bar-label">' + l + '</span>' +
+        '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div>' +
+        '<span class="bar-count">' + counts[l] + '</span></div>';
+    });
+    wrap.innerHTML = html;
+    board.appendChild(wrap);
+  });
+}
+
+document.getElementById('endRunBtn').addEventListener('click', async () => {
+  if (!confirm('確定要結束這一大題嗎？')) return;
+  await updateDoc(doc(db, 'sessions', sessionId, 'runs', currentRunBankId), { endedAt: serverTimestamp() });
+});
+
+document.getElementById('newRunBtn').addEventListener('click', () => {
+  document.getElementById('sessionCard').scrollIntoView({ behavior: 'smooth' });
+});
+
+document.getElementById('endSessionBtn').addEventListener('click', async () => {
+  if (!confirm('確定要結束今天的課嗎？結束後這個場次代碼就不能再發布新大題了。')) return;
+  await updateDoc(doc(db, 'sessions', sessionId), { status: 'ended', endedAt: serverTimestamp() });
+  if (unsubRun) unsubRun();
+  if (unsubJoined) unsubJoined();
+  if (unsubResponses) unsubResponses();
+  if (countdownTimer) clearInterval(countdownTimer);
+  document.getElementById('runCard').classList.add('hidden');
+  await checkTodaySession();
+});
+
+// ---------- 排行榜 ----------
+
+async function computeLeaderboard() {
+  const rosterSnap = await getDocs(collection(db, 'classes', classId, 'students'));
+  const roster = rosterSnap.docs.map(d => d.data().seatNo || d.id);
+  const runsSnap = await getDocs(collection(db, 'sessions', sessionId, 'runs'));
+  const runs = runsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const totalSubQs = runs.reduce((sum, r) => sum + (r.subQuestions ? r.subQuestions.length : 0), 0);
+  const respSnap = await getDocs(collection(db, 'sessions', sessionId, 'responses'));
+  const responses = respSnap.docs.map(d => d.data());
+
+  const rows = roster.map(seatNo => {
+    const mine = responses.filter(r => r.seatNo === seatNo);
+    const correctCount = mine.filter(r => r.isCorrect).length;
+    const totalTime = mine.reduce((s, r) => s + (r.timeUsedSeconds || 0), 0);
+    return { seatNo, correctCount, answeredCount: mine.length, totalSubQs, totalTime };
+  });
+  rows.sort((a, b) => b.correctCount - a.correctCount || a.totalTime - b.totalTime);
+  return rows;
+}
+
+async function renderLeaderboard() {
+  const body = document.getElementById('lbBody');
+  body.innerHTML = '<tr><td colspan="5">計算中…</td></tr>';
+  const rows = await computeLeaderboard();
+  body.innerHTML = '';
+  rows.forEach((r, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + (i + 1) + '</td><td>' + r.seatNo + ' 號</td><td>' + r.correctCount + '</td>' +
+      '<td>' + r.answeredCount + ' / ' + r.totalSubQs + '</td><td>' + r.totalTime + ' 秒</td>';
+    body.appendChild(tr);
+  });
+}
+
+document.getElementById('showLeaderboardBtn').addEventListener('click', () => {
+  document.getElementById('leaderboardCard').classList.remove('hidden');
+  document.getElementById('leaderboardCard').scrollIntoView({ behavior: 'smooth' });
+  renderLeaderboard();
+});
+document.getElementById('recalcLeaderboardBtn').addEventListener('click', renderLeaderboard);
+</script>
+</body>
+</html>
