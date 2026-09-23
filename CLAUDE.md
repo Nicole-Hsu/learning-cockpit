@@ -17,6 +17,18 @@
 - 課後統計答對數與作答耗時排名，且支援「當天全部 session 加總」（見下方 `sessions` 的 `date` 欄位）。
 - **老師端即時投影「全班作答分佈」**（像 Kahoot 的長條圖，每個小題各選項被選次數即時更新）——用 `responses` 的 `onSnapshot` 監聽在前端算票數即可，不用額外的 collection，跟 kj 老師端即時渲染便利貼牆同一種做法。
 - **視覺主色**：Tiffany 藍 `#0ABAB5`（跟 KJ 便利貼牆的橘色區分，其餘 card／圓角／排版風格沿用）。
+- **Firebase 專案**：`classroom-responder`（獨立專案，Firestore + Google 登入白名單已啟用）。Web app SDK config：
+  ```js
+  const firebaseConfig = {
+    apiKey: "AIzaSyCQ5a6CGci369p6s8ES90-duPXZlj6oSXM",
+    authDomain: "classroom-responder.firebaseapp.com",
+    projectId: "classroom-responder",
+    storageBucket: "classroom-responder.firebasestorage.app",
+    messagingSenderId: "648909917784",
+    appId: "1:648909917784:web:29281a92dd32c34656c42d"
+  };
+  ```
+  - **Storage 還沒啟用**：Firebase Storage 需要專案升級到 Blaze（用量付費）方案並綁定帳單，這需要使用者自己在 Firebase Console 操作（不是密碼/憑證問題，是綁定帳單這件事本身不該由 agent 代做）。小題圖片功能要等 Storage 啟用後才能接。
 - **技術路線**：純前端 HTML/CSS/JS（vanilla JS，不用建置工具）+ Firebase（Firestore 即時同步 + Google 登入白名單 + **Storage 存小題圖片**，不把圖片塞 base64 進 Firestore）。QR code 用 `qrcodejs`（cdnjs），房間/場次代碼用隨機 6 碼（排除易混淆字元）。Firebase 專案另開一個新的，不共用 `kj-affinity-board`。
 - **資料模型（設計定案，尚未實作）**：
   - `teachers/{email}`：白名單 + 科別授權（`subjects: []`），比照 kj 的 `allowedEmails` 但多一個科別欄位。
