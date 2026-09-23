@@ -260,7 +260,7 @@ async function submitAnswer(sq, selected) {
   const startedAtMs = currentRunData.startedAt && currentRunData.startedAt.toMillis ? currentRunData.startedAt.toMillis() : Date.now();
   const timeUsedSeconds = Math.max(0, Math.round((Date.now() - startedAtMs) / 1000));
   const isCorrect = selected === sq.correctAnswer;
-  const respId = mySeat + '_' + sq.order;
+  const respId = mySeat + '_' + currentRunBankId + '_' + sq.order;
   await setDoc(doc(db, 'sessions', sessionId, 'responses', respId), {
     seatNo: mySeat, bankId: currentRunBankId, order: sq.order,
     selectedAnswer: selected, isCorrect, timeUsedSeconds, answeredAt: serverTimestamp()
