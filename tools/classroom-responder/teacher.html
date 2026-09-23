@@ -95,7 +95,8 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
       </div>
       <div class="field">
         <label>科別</label>
-        <select id="newClassSubject"></select>
+        <input id="newClassSubject" list="subjectOptions" placeholder="例如：地科（第一次可以自己打新科別）">
+        <datalist id="subjectOptions"></datalist>
       </div>
     </div>
     <div class="row" style="align-items:center;">
@@ -250,17 +251,13 @@ onAuthStateChanged(auth, async user => {
   myEmail = (user.email || '').toLowerCase();
   myUid = user.uid;
   isRoot = myEmail === ROOT_ADMIN_EMAIL;
-  if (isRoot) {
-    mySubjects = null; // root 視同全科
-  } else {
-    const tSnap = await getDoc(doc(db, 'teachers', myEmail));
-    if (!tSnap.exists()) {
-      document.getElementById('loginErr').textContent = '這個帳號（' + user.email + '）還沒被授權使用，請聯絡管理者新增這個信箱。';
-      await signOut(auth);
-      return;
-    }
-    mySubjects = tSnap.data().subjects || [];
+  const tSnap = await getDoc(doc(db, 'teachers', myEmail));
+  if (!tSnap.exists() && !isRoot) {
+    document.getElementById('loginErr').textContent = '這個帳號（' + user.email + '）還沒被授權使用，請聯絡管理者新增這個信箱。';
+    await signOut(auth);
+    return;
   }
+  mySubjects = tSnap.exists() ? (tSnap.data().subjects || []) : [];
   document.getElementById('loginCard').classList.add('hidden');
   document.getElementById('classCard').classList.remove('hidden');
   document.getElementById('backToClassBtn').classList.remove('hidden');
@@ -268,12 +265,12 @@ onAuthStateChanged(auth, async user => {
     document.getElementById('adminCard').classList.remove('hidden');
     loadTeacherList();
   }
-  const subjSel = document.getElementById('newClassSubject');
-  subjSel.innerHTML = '';
-  (mySubjects || ['（管理者：請先在授權清單建立科別後再開班）']).forEach(s => {
+  const subjList = document.getElementById('subjectOptions');
+  subjList.innerHTML = '';
+  mySubjects.forEach(s => {
     const opt = document.createElement('option');
-    opt.value = s; opt.textContent = s;
-    subjSel.appendChild(opt);
+    opt.value = s;
+    subjList.appendChild(opt);
   });
   const snap = await getDocs(query(collection(db, 'classes'), where('teacherId', '==', myUid)));
   const sel = document.getElementById('classSelect');
@@ -361,13 +358,20 @@ document.getElementById('useClassBtn').addEventListener('click', async () => {
       classData = (await getDoc(doc(db, 'classes', classId))).data();
     } else {
       const name = document.getElementById('newClassName').value.trim();
-      const subject = document.getElementById('newClassSubject').value;
+      const subject = document.getElementById('newClassSubject').value.trim();
       if (!name) { errEl.textContent = '請輸入班級名稱'; return; }
-      if (!subject) { errEl.textContent = '請先確認科別授權'; return; }
+      if (!subject) { errEl.textContent = '請輸入科別'; return; }
       const ref = doc(collection(db, 'classes'));
       classData = { name, subject, teacherId: myUid, createdAt: serverTimestamp() };
       await setDoc(ref, classData);
       classId = ref.id;
+      if (!mySubjects.includes(subject)) {
+        mySubjects = [...mySubjects, subject];
+        await setDoc(doc(db, 'teachers', myEmail), { subjects: mySubjects }, { merge: true });
+        const opt = document.createElement('option');
+        opt.value = subject;
+        document.getElementById('subjectOptions').appendChild(opt);
+      }
     }
     document.getElementById('rosterCard').classList.remove('hidden');
     document.getElementById('bankListCard').classList.remove('hidden');
