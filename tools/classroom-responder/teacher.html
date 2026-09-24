@@ -1473,7 +1473,7 @@ function renderJoinedList(roster, joinedMap) {
     const row = document.createElement('div');
     row.className = 'list-row';
     const label = document.createElement('span');
-    label.textContent = seatNo + ' 號' + (joined ? '' : '（尚未加入）');
+    label.textContent = seatNo + (joined ? '' : '（尚未加入）');
     if (!joined) label.style.color = 'var(--text-dim)';
     row.appendChild(label);
     if (joined) {
