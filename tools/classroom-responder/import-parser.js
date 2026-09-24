@@ -22,6 +22,27 @@ export function parseTSV(text) {
   return rows;
 }
 
+function csvCell(v) {
+  let s = String(v == null ? '' : v);
+  if (/^[=@]/.test(s)) s = ' ' + s;
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+
+export function buildExportCsv(banks) {
+  const rows = [['單元', '限時(秒)', '題目', 'A', 'B', 'C', 'D', '正解(A~D)', '圖片網址(多張用空格隔開)']];
+  banks.forEach(b => {
+    (b.subQuestions || []).forEach((sq, i) => {
+      const imgs = (sq.imageUrls && sq.imageUrls.length) ? sq.imageUrls : (sq.imageUrl ? [sq.imageUrl] : []);
+      rows.push([
+        i === 0 ? b.title : '', i === 0 ? b.timeLimitSeconds : '',
+        sq.content, sq.options[0], sq.options[1], sq.options[2], sq.options[3],
+        sq.correctAnswer, imgs.join(' ')
+      ]);
+    });
+  });
+  return '﻿' + rows.map(r => r.map(csvCell).join(',')).join('\r\n');
+}
+
 function normalizeAnswer(s) {
   return s.replace(/[Ａ-Ｄａ-ｄ]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)).toUpperCase();
 }

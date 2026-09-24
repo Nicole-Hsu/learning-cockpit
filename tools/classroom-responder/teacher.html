@@ -173,6 +173,7 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
       <h2 style="margin-bottom:0;">題庫（同科別老師共用）</h2>
       <div style="display:flex;gap:8px;">
+        <button class="btn secondary small" id="exportBanksBtn">匯出題庫（Excel）</button>
         <button class="btn secondary small" id="importBankToggleBtn">匯入題目（Excel）</button>
         <button class="btn secondary small" id="newBankToggleBtn">＋ 新增大題</button>
       </div>
@@ -292,7 +293,7 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
 </div>
 
 <script type="module">
-import { parseTSV, buildImportBanks } from './import-parser.js';
+import { parseTSV, buildImportBanks, buildExportCsv } from './import-parser.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js';
 import {
   getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut
@@ -993,6 +994,26 @@ document.getElementById('importBankToggleBtn').addEventListener('click', () => {
   resetImportCard();
   document.getElementById('importBankCard').classList.remove('hidden');
   document.getElementById('importBankCard').scrollIntoView({ behavior: 'smooth' });
+});
+
+document.getElementById('exportBanksBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('exportBanksBtn');
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = '匯出中…';
+  try {
+    const snap = await getDocs(query(collection(db, 'questionBanks'), where('subject', '==', classData.subject)));
+    const banks = snap.docs.map(d => d.data()).filter(b => !b.deleted)
+      .sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true }));
+    if (!banks.length) { alert('這個科別目前沒有題庫可以匯出。'); return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([buildExportCsv(banks)], { type: 'text/csv;charset=utf-8;' }));
+    a.download = '題庫匯出_' + classData.subject + '_' + todayStr() + '.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  } catch (e) {
+    alert('匯出失敗：' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = original;
+  }
 });
 
 document.getElementById('cancelImportBtn').addEventListener('click', () => {
