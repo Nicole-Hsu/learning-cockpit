@@ -175,6 +175,10 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
       <button class="btn secondary small" id="newBankToggleBtn">＋ 新增大題</button>
     </div>
     <div id="bankList" style="font-size:.9rem;margin-top:10px;"></div>
+    <div id="trashWrap" class="hidden" style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--border);">
+      <button class="btn secondary small" id="toggleTrashBtn">展開回收桶（0）</button>
+      <div id="trashList" class="hidden" style="font-size:.9rem;margin-top:8px;"></div>
+    </div>
   </div>
 
   <div class="card hidden" id="newBankCard">
@@ -922,16 +926,71 @@ document.getElementById('saveBankBtn').addEventListener('click', async () => {
   } catch (e) { errEl.textContent = e.message; }
 });
 
+function renderTrash(trashDocs) {
+  const wrap = document.getElementById('trashWrap');
+  const list = document.getElementById('trashList');
+  list.innerHTML = '';
+  wrap.classList.toggle('hidden', !trashDocs.length);
+  document.getElementById('toggleTrashBtn').textContent =
+    (list.classList.contains('hidden') ? '展開' : '收合') + '回收桶（' + trashDocs.length + '）';
+  trashDocs.forEach(d => {
+    const data = d.data();
+    const row = document.createElement('div');
+    row.className = 'list-row';
+    const info = document.createElement('span');
+    info.style.color = 'var(--text-mid)';
+    info.textContent = data.title + '（刪除者：' + (data.deletedBy || '不明') + '）';
+    row.appendChild(info);
+    const btns = document.createElement('span');
+    btns.style.cssText = 'display:flex;gap:6px;';
+    if (isRoot || data.createdBy === myUid) {
+      const restoreBtn = document.createElement('button');
+      restoreBtn.className = 'btn secondary small';
+      restoreBtn.textContent = '還原';
+      restoreBtn.addEventListener('click', async () => {
+        await updateDoc(doc(db, 'questionBanks', d.id), { deleted: false, deletedAt: null, deletedBy: null });
+        await loadBankList();
+        await loadPublishSelect();
+      });
+      btns.appendChild(restoreBtn);
+    }
+    if (isRoot) {
+      const purgeBtn = document.createElement('button');
+      purgeBtn.className = 'btn secondary small';
+      purgeBtn.style.color = 'var(--danger)';
+      purgeBtn.textContent = '永久刪除';
+      purgeBtn.addEventListener('click', async () => {
+        if (!confirm('永久刪除「' + data.title + '」？這次真的不能復原了。')) return;
+        await deleteDoc(doc(db, 'questionBanks', d.id));
+        await loadBankList();
+      });
+      btns.appendChild(purgeBtn);
+    }
+    row.appendChild(btns);
+    list.appendChild(row);
+  });
+}
+
+document.getElementById('toggleTrashBtn').addEventListener('click', () => {
+  const list = document.getElementById('trashList');
+  const nowHidden = list.classList.toggle('hidden');
+  const n = list.children.length;
+  document.getElementById('toggleTrashBtn').textContent = (nowHidden ? '展開' : '收合') + '回收桶（' + n + '）';
+});
+
 async function loadBankList() {
   const listEl = document.getElementById('bankList');
   listEl.innerHTML = '讀取中…';
   const snap = await getDocs(query(collection(db, 'questionBanks'), where('subject', '==', classData.subject)));
   listEl.innerHTML = '';
-  if (snap.empty) {
+  const byTitle = (a, b) => a.data().title.localeCompare(b.data().title, undefined, { numeric: true });
+  renderTrash(snap.docs.filter(d => d.data().deleted).sort(byTitle));
+  const activeDocs = snap.docs.filter(d => !d.data().deleted);
+  if (!activeDocs.length) {
     listEl.innerHTML = '<p style="color:var(--text-mid);">這個科別還沒有題庫，按上面「新增大題」開始第一個。</p>';
     return;
   }
-  const docs = snap.docs.sort((a, b) => a.data().title.localeCompare(b.data().title, undefined, { numeric: true }));
+  const docs = activeDocs.sort(byTitle);
   docs.forEach(d => {
     const data = d.data();
     const row = document.createElement('div');
@@ -965,9 +1024,9 @@ async function loadBankList() {
       deleteBtn.style.color = 'var(--danger)';
       deleteBtn.textContent = '刪除題庫';
       deleteBtn.addEventListener('click', async () => {
-        if (!confirm('確定要刪除「' + data.title + '」這份題庫嗎？已經發布過的場次紀錄不會受影響，但刪掉之後所有用這份題庫的老師都選不到它了，不能復原。')) return;
+        if (!confirm('確定要刪除「' + data.title + '」這份題庫嗎？\n刪除後所有老師都選不到它了，但會先放進「回收桶」，題庫建立者或管理者可以還原。已經發布過的場次紀錄不受影響。')) return;
         try {
-          await deleteDoc(doc(db, 'questionBanks', d.id));
+          await updateDoc(doc(db, 'questionBanks', d.id), { deleted: true, deletedAt: serverTimestamp(), deletedBy: myEmail });
           await loadBankList();
           await loadPublishSelect();
         } catch (e) { alert('刪除失敗：' + e.message); }
@@ -1015,12 +1074,13 @@ document.getElementById('publishBankSearch').addEventListener('input', applyBank
 async function loadPublishSelect() {
   publishBankCache = {};
   const snap = await getDocs(query(collection(db, 'questionBanks'), where('subject', '==', classData.subject)));
-  if (snap.empty) {
+  const activeDocs = snap.docs.filter(d => !d.data().deleted);
+  if (!activeDocs.length) {
     document.getElementById('publishBankSelect').innerHTML = '<option value="">（尚無題庫）</option>';
     document.getElementById('publishPreview').innerHTML = '';
     return;
   }
-  snap.docs.forEach(d => { publishBankCache[d.id] = d.data(); });
+  activeDocs.forEach(d => { publishBankCache[d.id] = d.data(); });
   document.getElementById('publishBankSearch').value = '';
   applyBankSearchFilter();
 }
