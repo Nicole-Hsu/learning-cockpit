@@ -664,7 +664,13 @@ function subqBlockHtml(idx) {
   <div class="subq-block" data-idx="${idx}">
     <h4>小題 ${idx + 1} <button type="button" class="btn secondary small removeSubqBtn">刪除這小題</button></h4>
     <div class="field"><label>題目內容</label><textarea class="subq-content" placeholder="小題文字"></textarea></div>
-    <div class="field"><label>圖片網址（選填）</label><input class="subq-image" placeholder="https://...（可放這個 repo 的 images/ 或外部圖床）"></div>
+    <div class="field">
+      <label>圖片網址（選填）</label>
+      <input class="subq-image" placeholder="https://...">
+      <div style="font-size:.76rem;color:var(--text-dim);margin-top:4px;">
+        怎麼放圖片：到 <a href="https://imgur.com/upload" target="_blank" style="color:var(--accent-dark);">imgur.com/upload</a>（不用註冊）拖圖片上傳，上傳完在圖片上按右鍵選「複製圖片網址」，貼進這個欄位。
+      </div>
+    </div>
     ${OPT_LABELS.map(l => `<div class="opt-row"><span>${l}</span><input class="subq-opt" data-label="${l}" placeholder="選項 ${l}"><input type="radio" name="correct-${idx}" class="subq-correct" value="${l}" title="正解"></div>`).join('')}
   </div>`;
 }
