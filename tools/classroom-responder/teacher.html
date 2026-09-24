@@ -860,14 +860,22 @@ async function computeLeaderboard() {
 async function renderLeaderboard() {
   const body = document.getElementById('lbBody');
   body.innerHTML = '<tr><td colspan="5">計算中…</td></tr>';
-  const rows = await computeLeaderboard();
-  body.innerHTML = '';
-  rows.forEach((r, i) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = '<td>' + (i + 1) + '</td><td>' + r.seatNo + ' 號</td><td>' + r.correctCount + '</td>' +
-      '<td>' + r.answeredCount + ' / ' + r.totalSubQs + '</td><td>' + r.totalTime + ' 秒</td>';
-    body.appendChild(tr);
-  });
+  try {
+    const rows = await computeLeaderboard();
+    body.innerHTML = '';
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="5" style="color:var(--text-mid);">這個班級還沒有名單，或今天還沒有人作答。</td></tr>';
+      return;
+    }
+    rows.forEach((r, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + (i + 1) + '</td><td>' + r.seatNo + ' 號</td><td>' + r.correctCount + '</td>' +
+        '<td>' + r.answeredCount + ' / ' + r.totalSubQs + '</td><td>' + r.totalTime + ' 秒</td>';
+      body.appendChild(tr);
+    });
+  } catch (e) {
+    body.innerHTML = '<tr><td colspan="5" style="color:var(--danger);">計算失敗：' + e.message + '</td></tr>';
+  }
 }
 
 document.getElementById('showLeaderboardBtn').addEventListener('click', () => {
