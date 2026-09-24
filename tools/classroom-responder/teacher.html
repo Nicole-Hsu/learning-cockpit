@@ -206,12 +206,12 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
   <div class="card hidden" id="importBankCard">
     <h2>從 Excel 匯入題目</h2>
     <ol style="font-size:.88rem;color:var(--text-mid);padding-left:20px;margin-bottom:12px;line-height:1.7;">
-      <li>先 <a href="#" id="downloadTemplateLink" style="color:var(--accent-dark);">下載範本</a>（用 Excel 開），照格式填題目：一列一個小題，同一個「大題標題」的列會自動歸成同一個大題。</li>
+      <li>先 <a href="#" id="downloadTemplateLink" style="color:var(--accent-dark);">下載範本</a>（用 Excel 開），照格式填題目：一列一個小題，同一個「單元」的列會自動歸成同一個大題。</li>
       <li>填好後，在 Excel 選取<b>有資料的儲存格</b>（可以連標題列一起選）→ 複製（Ctrl+C）。</li>
       <li>貼到下面的框框（Ctrl+V），按「解析預覽」，確認沒問題再按「確認匯入」。</li>
     </ol>
     <div style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">
-      欄位順序：大題標題｜限時(秒)｜題目｜A｜B｜C｜D｜正解(A~D)｜圖片網址(選填，多張用空格隔開)。「大題標題」「限時」只要在該大題第一列填，其餘列可以留空。
+      欄位順序：單元｜限時(秒)｜題目｜A｜B｜C｜D｜正解(A~D)。「單元」「限時」只要在該單元第一列填，其餘列可以留空。圖片請匯入後再到題庫「編輯內容」裡加。
     </div>
     <div class="field"><textarea id="importText" style="min-height:140px;font-size:.85rem;" placeholder="在這裡貼上從 Excel 複製的內容"></textarea></div>
     <div>
@@ -1003,10 +1003,11 @@ document.getElementById('cancelImportBtn').addEventListener('click', () => {
 document.getElementById('downloadTemplateLink').addEventListener('click', e => {
   e.preventDefault();
   const rows = [
-    ['大題標題', '限時(秒)', '題目', 'A', 'B', 'C', 'D', '正解(A~D)', '圖片網址(選填，多張用空格隔開)'],
-    ['地層構造與岩石', '180', '地球內部由外而內依序是？', '地殼→地函→地核', '地核→地函→地殼', '地函→地殼→地核', '地殼→地核→地函', 'A', ''],
-    ['', '', '下列哪一種是火成岩？', '花岡岩', '石灰岩', '頁岩', '大理岩', 'A', ''],
-    ['天氣與氣候', '120', '台灣夏季最常見的劇烈天氣是？', '颱風', '寒流', '沙塵暴', '龍捲風', 'A', 'https://i.postimg.cc/xxxxxxx/example.jpg']
+    ['單元', '限時(秒)', '題目', 'A', 'B', 'C', 'D', '正解(A~D)'],
+    ['生命徵象與評估', '120', '正常成人的呼吸速率範圍（次/分）是？', '12-20', '30-40', '4-8', '60-100', 'A'],
+    ['', '', '測量血壓時，聽診器應放置於？', '肱動脈（肘窩處）', '橈動脈', '頸動脈', '足背動脈', 'A'],
+    ['感染管制與給藥安全', '120', '執行侵入性治療前，最基本且最重要的感染管制措施是？', '落實手部衛生（洗手）', '戴口罩', '戴手套', '用酒精消毒床單', 'A'],
+    ['', '', '給藥安全「五對」原則中，不包含下列哪一項？', '對家屬', '對病人', '對藥物', '對劑量', 'A']
   ];
   const csv = '﻿' + rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\r\n');
   const a = document.createElement('a');

@@ -31,7 +31,7 @@ export function buildImportBanks(rows, defaultLimit = 300) {
   const banks = [];
   const byTitle = new Map();
   let start = 0;
-  if (rows.length && (rows[0][0] || '').trim().startsWith('大題標題')) start = 1;
+  if (rows.length && /^(單元|大題標題)/.test((rows[0][0] || '').trim())) start = 1;
   let curTitle = '';
 
   for (let i = start; i < rows.length; i++) {
@@ -45,7 +45,7 @@ export function buildImportBanks(rows, defaultLimit = 300) {
     const rowErrors = [];
 
     if (title) curTitle = title;
-    if (!curTitle) { errors.push('第 ' + no + ' 列：沒有大題標題（第一個小題那一列一定要填）'); continue; }
+    if (!curTitle) { errors.push('第 ' + no + ' 列：沒有單元名稱（第一個小題那一列一定要填「單元」）'); continue; }
 
     let bank = byTitle.get(curTitle);
     if (!bank) {
