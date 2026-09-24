@@ -645,7 +645,8 @@ async function loadBankList() {
     listEl.innerHTML = '<p style="color:var(--text-mid);">這個科別還沒有題庫，按上面「新增大題」開始第一個。</p>';
     return;
   }
-  snap.forEach(d => {
+  const docs = snap.docs.sort((a, b) => a.data().title.localeCompare(b.data().title, undefined, { numeric: true }));
+  docs.forEach(d => {
     const data = d.data();
     const row = document.createElement('div');
     row.className = 'list-row';
@@ -703,7 +704,8 @@ async function loadPublishSelect() {
     document.getElementById('publishPreview').innerHTML = '';
     return;
   }
-  snap.forEach(d => {
+  const docs = snap.docs.sort((a, b) => a.data().title.localeCompare(b.data().title, undefined, { numeric: true }));
+  docs.forEach(d => {
     publishBankCache[d.id] = d.data();
     const opt = document.createElement('option');
     opt.value = d.id; opt.textContent = d.data().title;
