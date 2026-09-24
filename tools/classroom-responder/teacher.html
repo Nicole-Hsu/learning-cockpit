@@ -78,20 +78,29 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
 
   <div class="card hidden" id="adminCard">
     <h2>授權老師管理（只有你看得到這張卡片）</h2>
+
+    <div style="border:1.5px dashed var(--border);border-radius:12px;padding:14px;margin-bottom:18px;">
+      <div style="font-weight:600;font-size:.9rem;color:var(--text-mid);margin-bottom:8px;">科別管理（先在這裡建立科別，下面授權老師時就能直接點選）</div>
+      <div id="subjectCatalog" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;"></div>
+      <div class="row" style="align-items:center;">
+        <input id="newCatalogSubject" placeholder="新科別名稱，例如：基本護理學" style="flex:2;">
+        <button class="btn secondary small" id="addCatalogSubjectBtn" style="flex:0 0 auto;">新增科別</button>
+      </div>
+      <div class="err" id="catalogErr"></div>
+    </div>
+
     <div id="teacherList" style="font-size:.9rem;margin-bottom:14px;"></div>
+    <div id="teacherFormTitle" style="font-weight:600;font-size:.9rem;color:var(--text-mid);margin-bottom:8px;">新增授權老師</div>
     <div class="field">
       <label>老師的 Google 信箱</label>
       <input id="newTeacherEmail" placeholder="例如 teacher@mail.cgust.edu.tw">
     </div>
     <div class="field">
-      <label>點選要授權的科別（可多選）</label>
-      <div id="subjectChips" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;"></div>
-      <div class="row" style="align-items:center;">
-        <input id="newSubjectChipInput" placeholder="沒有想要的科別？在這裡打新科別，按「加入選項」" style="flex:2;">
-        <button class="btn secondary small" id="addSubjectChipBtn" style="flex:0 0 auto;">加入選項</button>
-      </div>
+      <label>點選要授權的科別（可多選；之後想增加，按老師旁邊的「編輯科別」）</label>
+      <div id="subjectChips" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
     </div>
-    <button class="btn secondary" id="addTeacherBtn">新增授權</button>
+    <button class="btn secondary" id="addTeacherBtn">儲存授權</button>
+    <button class="btn secondary hidden" id="cancelTeacherEditBtn">取消編輯</button>
     <div class="err" id="adminErr"></div>
   </div>
 
@@ -404,7 +413,7 @@ function renderSubjectChips() {
   const box = document.getElementById('subjectChips');
   box.innerHTML = '';
   if (!knownSubjects.size) {
-    box.innerHTML = '<span style="font-size:.82rem;color:var(--text-dim);">目前還沒有任何科別，請用下面的欄位新增。</span>';
+    box.innerHTML = '<span style="font-size:.82rem;color:var(--text-dim);">目前還沒有任何科別，請先在上面「科別管理」新增。</span>';
     return;
   }
   [...knownSubjects].sort((a, b) => a.localeCompare(b, 'zh-Hant')).forEach(s => {
@@ -422,24 +431,102 @@ function renderSubjectChips() {
   });
 }
 
-document.getElementById('addSubjectChipBtn').addEventListener('click', () => {
-  const input = document.getElementById('newSubjectChipInput');
-  const s = input.value.trim();
-  if (!s) return;
-  knownSubjects.add(s);
-  selectedChipSubjects.add(s);
-  input.value = '';
+let catalogSubjects = new Set();
+let teacherHeldSubjects = new Set();
+
+function renderCatalog() {
+  const box = document.getElementById('subjectCatalog');
+  box.innerHTML = '';
+  if (!catalogSubjects.size) {
+    box.innerHTML = '<span style="font-size:.82rem;color:var(--text-dim);">還沒有建立任何科別，請用下面欄位新增。</span>';
+    return;
+  }
+  [...catalogSubjects].sort((a, b) => a.localeCompare(b, 'zh-Hant')).forEach(s => {
+    const pill = document.createElement('span');
+    pill.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:5px 6px 5px 14px;border-radius:999px;background:#d9f6f4;font-size:.9rem;';
+    const label = document.createElement('span');
+    label.textContent = s;
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.textContent = '✕';
+    del.setAttribute('aria-label', '刪除科別 ' + s);
+    del.style.cssText = 'border:none;background:none;color:var(--text-mid);cursor:pointer;font-size:.9rem;padding:0 6px;';
+    del.addEventListener('click', async () => {
+      const errEl = document.getElementById('catalogErr');
+      errEl.textContent = '';
+      if (teacherHeldSubjects.has(s)) { errEl.textContent = '還有老師被授權「' + s + '」，請先從那些老師的「編輯科別」把它拿掉，才能刪除這個科別。'; return; }
+      if (!confirm('確定要從科別目錄刪除「' + s + '」嗎？（不會動到已經用這個科別建立的班級或題庫）')) return;
+      await deleteDoc(doc(db, 'subjects', s));
+      catalogSubjects.delete(s);
+      refreshKnownSubjects();
+      renderCatalog();
+    });
+    pill.appendChild(label); pill.appendChild(del);
+    box.appendChild(pill);
+  });
+}
+
+function refreshKnownSubjects() {
+  knownSubjects.clear();
+  catalogSubjects.forEach(s => knownSubjects.add(s));
+  teacherHeldSubjects.forEach(s => knownSubjects.add(s));
   renderSubjectChips();
+}
+
+document.getElementById('addCatalogSubjectBtn').addEventListener('click', async () => {
+  const input = document.getElementById('newCatalogSubject');
+  const errEl = document.getElementById('catalogErr');
+  errEl.textContent = '';
+  const s = input.value.trim();
+  if (!s) { errEl.textContent = '請輸入科別名稱'; return; }
+  if (s.includes('/')) { errEl.textContent = '科別名稱不能包含「/」'; return; }
+  try {
+    await setDoc(doc(db, 'subjects', s), { addedAt: serverTimestamp() });
+    catalogSubjects.add(s);
+    input.value = '';
+    refreshKnownSubjects();
+    renderCatalog();
+  } catch (e) { errEl.textContent = e.message; }
 });
+
+async function loadSubjectCatalog(teacherSnap) {
+  const snap = await getDocs(collection(db, 'subjects'));
+  catalogSubjects = new Set(snap.docs.map(d => d.id));
+  teacherHeldSubjects = new Set();
+  teacherSnap.forEach(d => (d.data().subjects || []).forEach(s => teacherHeldSubjects.add(s)));
+  if (snap.empty) {
+    // 第一次使用科別目錄：把目前老師身上已有的科別一次補進目錄，避免目錄是空的
+    for (const s of teacherHeldSubjects) {
+      if (s.includes('/')) continue;
+      await setDoc(doc(db, 'subjects', s), { addedAt: serverTimestamp() });
+      catalogSubjects.add(s);
+    }
+  }
+  renderCatalog();
+  refreshKnownSubjects();
+}
+
+let editingTeacherEmail = null;
+
+function setTeacherFormMode(email, subjects) {
+  editingTeacherEmail = email;
+  document.getElementById('newTeacherEmail').value = email || '';
+  selectedChipSubjects.clear();
+  (subjects || []).forEach(s => selectedChipSubjects.add(s));
+  document.getElementById('teacherFormTitle').textContent = email ? '編輯授權：' + email : '新增授權老師';
+  document.getElementById('addTeacherBtn').textContent = email ? '儲存修改' : '儲存授權';
+  document.getElementById('cancelTeacherEditBtn').classList.toggle('hidden', !email);
+  renderSubjectChips();
+}
+
+document.getElementById('cancelTeacherEditBtn').addEventListener('click', () => setTeacherFormMode(null, []));
 
 async function loadTeacherList() {
   const listEl = document.getElementById('teacherList');
   listEl.innerHTML = '讀取中…';
   const snap = await getDocs(collection(db, 'teachers'));
   listEl.innerHTML = '';
-  (mySubjects || []).forEach(s => knownSubjects.add(s));
-  snap.forEach(d => (d.data().subjects || []).forEach(s => knownSubjects.add(s)));
-  renderSubjectChips();
+  await loadSubjectCatalog(snap);
   if (snap.empty) {
     listEl.innerHTML = '<p style="color:var(--text-mid);">目前只有你（管理者）能登入，下面新增其他老師的信箱＋科別。</p>';
     return;
@@ -449,6 +536,15 @@ async function loadTeacherList() {
     row.className = 'list-row';
     const span = document.createElement('span');
     span.textContent = d.id + '　（' + (d.data().subjects || []).join('、') + '）';
+    const btns = document.createElement('span');
+    btns.style.cssText = 'display:flex;gap:6px;';
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '編輯科別';
+    editBtn.style.cssText = 'border:1px solid var(--border);background:#fff;color:var(--accent-dark);font-size:.78rem;padding:3px 10px;border-radius:999px;cursor:pointer;';
+    editBtn.addEventListener('click', () => {
+      setTeacherFormMode(d.id, d.data().subjects || []);
+      document.getElementById('teacherFormTitle').scrollIntoView({ behavior: 'smooth' });
+    });
     const removeBtn = document.createElement('button');
     removeBtn.textContent = '移除';
     removeBtn.style.cssText = 'border:1px solid var(--border);background:#fff;color:var(--danger);font-size:.78rem;padding:3px 10px;border-radius:999px;cursor:pointer;';
@@ -457,7 +553,8 @@ async function loadTeacherList() {
       await deleteDoc(doc(db, 'teachers', d.id));
       loadTeacherList();
     });
-    row.appendChild(span); row.appendChild(removeBtn);
+    btns.appendChild(editBtn); btns.appendChild(removeBtn);
+    row.appendChild(span); row.appendChild(btns);
     listEl.appendChild(row);
   });
 }
@@ -472,9 +569,11 @@ document.getElementById('addTeacherBtn').addEventListener('click', async () => {
   if (!subjects.length) { errEl.textContent = '請至少點選一個科別'; return; }
   try {
     await setDoc(doc(db, 'teachers', email), { subjects, addedAt: serverTimestamp() });
-    emailInput.value = '';
-    selectedChipSubjects.clear();
-    loadTeacherList();
+    setTeacherFormMode(null, []);
+    await loadTeacherList();
+    errEl.style.color = 'var(--ok)';
+    errEl.textContent = '已儲存';
+    setTimeout(() => { errEl.textContent = ''; errEl.style.color = 'var(--danger)'; }, 2500);
   } catch (e) { errEl.textContent = e.message; }
 });
 
