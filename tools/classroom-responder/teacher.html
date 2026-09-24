@@ -79,11 +79,19 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
   <div class="card hidden" id="adminCard">
     <h2>授權老師管理（只有你看得到這張卡片）</h2>
     <div id="teacherList" style="font-size:.9rem;margin-bottom:14px;"></div>
-    <div class="row">
-      <input id="newTeacherEmail" placeholder="老師的 Google 信箱">
-      <input id="newTeacherSubjects" placeholder="科別，逗號分隔，例如 地科,生物">
-      <button class="btn secondary" id="addTeacherBtn" style="flex:0 0 auto;">新增授權</button>
+    <div class="field">
+      <label>老師的 Google 信箱</label>
+      <input id="newTeacherEmail" placeholder="例如 teacher@mail.cgust.edu.tw">
     </div>
+    <div class="field">
+      <label>點選要授權的科別（可多選）</label>
+      <div id="subjectChips" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;"></div>
+      <div class="row" style="align-items:center;">
+        <input id="newSubjectChipInput" placeholder="沒有想要的科別？在這裡打新科別，按「加入選項」" style="flex:2;">
+        <button class="btn secondary small" id="addSubjectChipBtn" style="flex:0 0 auto;">加入選項</button>
+      </div>
+    </div>
+    <button class="btn secondary" id="addTeacherBtn">新增授權</button>
     <div class="err" id="adminErr"></div>
   </div>
 
@@ -389,13 +397,51 @@ document.getElementById('yearSelect').addEventListener('change', async e => {
   updateClassCardVisibility();
 });
 
+const knownSubjects = new Set();
+const selectedChipSubjects = new Set();
+
+function renderSubjectChips() {
+  const box = document.getElementById('subjectChips');
+  box.innerHTML = '';
+  if (!knownSubjects.size) {
+    box.innerHTML = '<span style="font-size:.82rem;color:var(--text-dim);">目前還沒有任何科別，請用下面的欄位新增。</span>';
+    return;
+  }
+  [...knownSubjects].sort((a, b) => a.localeCompare(b, 'zh-Hant')).forEach(s => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    const on = selectedChipSubjects.has(s);
+    chip.textContent = (on ? '✓ ' : '') + s;
+    chip.style.cssText = 'padding:6px 14px;border-radius:999px;cursor:pointer;font-size:.9rem;border:1.5px solid ' +
+      (on ? 'var(--accent)' : 'var(--border)') + ';background:' + (on ? 'var(--accent)' : '#fff') + ';color:' + (on ? '#fff' : 'var(--text)') + ';';
+    chip.addEventListener('click', () => {
+      if (selectedChipSubjects.has(s)) selectedChipSubjects.delete(s); else selectedChipSubjects.add(s);
+      renderSubjectChips();
+    });
+    box.appendChild(chip);
+  });
+}
+
+document.getElementById('addSubjectChipBtn').addEventListener('click', () => {
+  const input = document.getElementById('newSubjectChipInput');
+  const s = input.value.trim();
+  if (!s) return;
+  knownSubjects.add(s);
+  selectedChipSubjects.add(s);
+  input.value = '';
+  renderSubjectChips();
+});
+
 async function loadTeacherList() {
   const listEl = document.getElementById('teacherList');
   listEl.innerHTML = '讀取中…';
   const snap = await getDocs(collection(db, 'teachers'));
   listEl.innerHTML = '';
+  (mySubjects || []).forEach(s => knownSubjects.add(s));
+  snap.forEach(d => (d.data().subjects || []).forEach(s => knownSubjects.add(s)));
+  renderSubjectChips();
   if (snap.empty) {
-    listEl.innerHTML = '<p style="color:var(--text-mid);">目前只有你（管理者）能登入，上面新增其他老師的信箱＋科別。</p>';
+    listEl.innerHTML = '<p style="color:var(--text-mid);">目前只有你（管理者）能登入，下面新增其他老師的信箱＋科別。</p>';
     return;
   }
   snap.forEach(d => {
@@ -418,16 +464,16 @@ async function loadTeacherList() {
 
 document.getElementById('addTeacherBtn').addEventListener('click', async () => {
   const emailInput = document.getElementById('newTeacherEmail');
-  const subjInput = document.getElementById('newTeacherSubjects');
   const errEl = document.getElementById('adminErr');
   errEl.textContent = '';
   const email = emailInput.value.trim().toLowerCase();
-  const subjects = subjInput.value.split(/[,，]+/).map(s => s.trim()).filter(Boolean);
+  const subjects = [...selectedChipSubjects];
   if (!email || !email.includes('@')) { errEl.textContent = '請輸入完整的信箱'; return; }
-  if (!subjects.length) { errEl.textContent = '請至少輸入一個科別'; return; }
+  if (!subjects.length) { errEl.textContent = '請至少點選一個科別'; return; }
   try {
     await setDoc(doc(db, 'teachers', email), { subjects, addedAt: serverTimestamp() });
-    emailInput.value = ''; subjInput.value = '';
+    emailInput.value = '';
+    selectedChipSubjects.clear();
     loadTeacherList();
   } catch (e) { errEl.textContent = e.message; }
 });
