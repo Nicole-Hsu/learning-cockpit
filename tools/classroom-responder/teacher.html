@@ -167,6 +167,10 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
   <div class="card hidden" id="sessionCard">
     <h2>今天的課</h2>
     <div class="field">
+      <label>搜尋題庫（標題或小題內容關鍵字）</label>
+      <input id="publishBankSearch" placeholder="例如：血壓、感染…">
+    </div>
+    <div class="field">
       <label>選一個大題發布</label>
       <select id="publishBankSelect"></select>
     </div>
@@ -699,24 +703,49 @@ async function loadBankList() {
 
 let publishBankCache = {};
 
-async function loadPublishSelect() {
+function bankMatchesKeyword(bank, keyword) {
+  if (!keyword) return true;
+  const kw = keyword.toLowerCase();
+  if (bank.title.toLowerCase().includes(kw)) return true;
+  return bank.subQuestions.some(sq =>
+    sq.content.toLowerCase().includes(kw) || sq.options.some(o => o.toLowerCase().includes(kw))
+  );
+}
+
+function applyBankSearchFilter() {
+  const keyword = document.getElementById('publishBankSearch').value.trim();
   const sel = document.getElementById('publishBankSelect');
+  const prevValue = sel.value;
   sel.innerHTML = '';
+  const ids = Object.keys(publishBankCache).filter(id => bankMatchesKeyword(publishBankCache[id], keyword));
+  if (!ids.length) {
+    sel.innerHTML = '<option value="">（沒有符合關鍵字的題庫）</option>';
+    renderPublishPreview();
+    return;
+  }
+  ids.sort((a, b) => publishBankCache[a].title.localeCompare(publishBankCache[b].title, undefined, { numeric: true }));
+  ids.forEach(id => {
+    const opt = document.createElement('option');
+    opt.value = id; opt.textContent = publishBankCache[id].title;
+    sel.appendChild(opt);
+  });
+  if (ids.includes(prevValue)) sel.value = prevValue;
+  renderPublishPreview();
+}
+
+document.getElementById('publishBankSearch').addEventListener('input', applyBankSearchFilter);
+
+async function loadPublishSelect() {
   publishBankCache = {};
   const snap = await getDocs(query(collection(db, 'questionBanks'), where('subject', '==', classData.subject)));
   if (snap.empty) {
-    sel.innerHTML = '<option value="">（尚無題庫）</option>';
+    document.getElementById('publishBankSelect').innerHTML = '<option value="">（尚無題庫）</option>';
     document.getElementById('publishPreview').innerHTML = '';
     return;
   }
-  const docs = snap.docs.sort((a, b) => a.data().title.localeCompare(b.data().title, undefined, { numeric: true }));
-  docs.forEach(d => {
-    publishBankCache[d.id] = d.data();
-    const opt = document.createElement('option');
-    opt.value = d.id; opt.textContent = d.data().title;
-    sel.appendChild(opt);
-  });
-  await renderPublishPreview();
+  snap.docs.forEach(d => { publishBankCache[d.id] = d.data(); });
+  document.getElementById('publishBankSearch').value = '';
+  applyBankSearchFilter();
 }
 
 async function renderPublishPreview() {
