@@ -220,7 +220,9 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
     </div>
     <div style="margin:10px 0;font-size:.85rem;color:var(--text-mid);">
       已加入 <b id="joinedCount">0</b> / <span id="rosterTotal">0</span> 人
+      <button class="btn secondary small" id="toggleJoinedListBtn" style="margin-left:8px;">展開名單</button>
     </div>
+    <div id="joinedList" class="hidden" style="margin-bottom:14px;"></div>
     <div id="voteBoard" style="margin-top:14px;"></div>
     <div style="margin-top:16px;">
       <button class="btn secondary" id="endRunBtn" style="color:var(--danger);">結束這一大題</button>
@@ -999,9 +1001,13 @@ function openRunBoard() {
 
   if (unsubJoined) unsubJoined();
   getDocs(collection(db, 'classes', classId, 'students')).then(rosterSnap => {
-    document.getElementById('rosterTotal').textContent = rosterSnap.size;
+    const roster = rosterSnap.docs.map(d => d.data().seatNo || d.id).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    document.getElementById('rosterTotal').textContent = roster.length;
     unsubJoined = onSnapshot(collection(db, 'sessions', sessionId, 'joined'), snap => {
+      const joinedMap = {};
+      snap.forEach(d => { joinedMap[d.id] = d.data(); });
       document.getElementById('joinedCount').textContent = snap.size;
+      renderJoinedList(roster, joinedMap);
     });
   });
 
@@ -1011,6 +1017,39 @@ function openRunBoard() {
     snap => { responsesCache = snap.docs.map(d => d.data()); renderVoteBoard(); }
   );
 }
+
+function renderJoinedList(roster, joinedMap) {
+  const list = document.getElementById('joinedList');
+  list.innerHTML = '';
+  roster.forEach(seatNo => {
+    const joined = joinedMap[seatNo];
+    const row = document.createElement('div');
+    row.className = 'list-row';
+    const label = document.createElement('span');
+    label.textContent = seatNo + ' 號' + (joined ? '' : '（尚未加入）');
+    if (!joined) label.style.color = 'var(--text-dim)';
+    row.appendChild(label);
+    if (joined) {
+      const releaseBtn = document.createElement('button');
+      releaseBtn.className = 'btn secondary small';
+      releaseBtn.style.color = 'var(--danger)';
+      releaseBtn.textContent = '解除';
+      releaseBtn.title = '如果這個座號被別人誤選，用這個解除，讓正確的人可以重新選';
+      releaseBtn.addEventListener('click', async () => {
+        if (!confirm(seatNo + ' 號的加入紀錄要解除嗎？解除後這個座號可以被重新選一次。')) return;
+        await deleteDoc(doc(db, 'sessions', sessionId, 'joined', seatNo));
+      });
+      row.appendChild(releaseBtn);
+    }
+    list.appendChild(row);
+  });
+}
+
+document.getElementById('toggleJoinedListBtn').addEventListener('click', () => {
+  const list = document.getElementById('joinedList');
+  const nowHidden = list.classList.toggle('hidden');
+  document.getElementById('toggleJoinedListBtn').textContent = nowHidden ? '展開名單' : '收合名單';
+});
 
 function startCountdown() {
   if (countdownTimer) clearInterval(countdownTimer);

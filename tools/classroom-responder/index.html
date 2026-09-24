@@ -85,7 +85,7 @@ button, input, select { font-family: inherit; }
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js';
 import {
-  getFirestore, doc, setDoc, getDoc, getDocs, collection, query, where, orderBy, limit, onSnapshot, serverTimestamp
+  getFirestore, doc, setDoc, getDoc, getDocs, deleteDoc, collection, query, where, orderBy, limit, onSnapshot, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js';
 
 const firebaseConfig = {
@@ -157,6 +157,9 @@ async function showJoinCard() {
 
 async function resetSeatAndRejoin() {
   localStorage.removeItem('cr_seat_' + sessionId);
+  if (mySeat) {
+    try { await deleteDoc(doc(db, 'sessions', sessionId, 'joined', mySeat)); } catch (e) { /* 忽略，反正本機也已經清掉了 */ }
+  }
   mySeat = null;
   if (unsubRun) { unsubRun(); unsubRun = null; }
   document.getElementById('waitCard').classList.add('hidden');
