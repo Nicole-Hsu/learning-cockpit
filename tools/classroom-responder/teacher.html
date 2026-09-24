@@ -108,12 +108,8 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
     <h2>科別、學年度與班級</h2>
     <div class="field">
       <label>選擇科別</label>
-      <select id="subjectSelect"><option value="">— 新增科別 —</option></select>
-    </div>
-    <div class="field" id="newSubjectField">
-      <label>新科別名稱</label>
-      <input id="newSubjectInput" placeholder="例如：護理">
-      <datalist id="subjectOptions"></datalist>
+      <select id="subjectSelect"><option value="">— 請選擇科別 —</option></select>
+      <div style="font-size:.76rem;color:var(--text-dim);margin-top:4px;">科別由管理者建立並授權，沒有想要的科別請聯絡管理者。</div>
     </div>
 
     <div class="field hidden" id="yearSelectField">
@@ -148,7 +144,7 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
       <div id="editClassFields" class="hidden" style="margin-top:12px;">
         <div class="field"><label>班級名稱</label><input id="editClassName"></div>
         <div class="field"><label>學年度</label><input id="editClassYear" placeholder="例如：114-1" style="max-width:160px;"></div>
-        <div class="field"><label>科別</label><input id="editClassSubject" list="subjectOptions"></div>
+        <div class="field"><label>科別</label><select id="editClassSubject"></select></div>
         <button class="btn secondary" id="saveClassEditBtn">儲存修改</button>
         <div class="err" id="editClassErr"></div>
       </div>
@@ -324,22 +320,49 @@ onAuthStateChanged(auth, async user => {
     document.getElementById('adminCard').classList.remove('hidden');
     loadTeacherList();
   }
-  const subjList = document.getElementById('subjectOptions');
-  subjList.innerHTML = '';
-  mySubjects.forEach(s => {
-    const opt = document.createElement('option');
-    opt.value = s;
-    subjList.appendChild(opt);
-  });
-  const subjSel = document.getElementById('subjectSelect');
-  subjSel.innerHTML = '<option value="">— 新增科別 —</option>';
-  mySubjects.forEach(s => {
-    const opt = document.createElement('option');
-    opt.value = s; opt.textContent = s;
-    subjSel.appendChild(opt);
-  });
+  populateSubjectSelects();
+  if (!isRoot && !allowedSubjects().length) {
+    document.getElementById('classErr').textContent = '你還沒有被授權任何科別，請聯絡管理者。';
+  }
   updateClassCardVisibility();
 });
+
+let rootCatalog = [];
+
+function allowedSubjects() {
+  const set = new Set(mySubjects);
+  if (isRoot) rootCatalog.forEach(s => set.add(s));
+  return [...set].sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+}
+
+function populateSubjectSelects() {
+  const subs = allowedSubjects();
+  const subjSel = document.getElementById('subjectSelect');
+  const editSel = document.getElementById('editClassSubject');
+  const cur = subjSel.value, editCur = editSel.value;
+  subjSel.innerHTML = '<option value="">— 請選擇科別 —</option>';
+  editSel.innerHTML = '';
+  subs.forEach(s => {
+    const o1 = document.createElement('option');
+    o1.value = s; o1.textContent = s;
+    subjSel.appendChild(o1);
+    const o2 = document.createElement('option');
+    o2.value = s; o2.textContent = s;
+    editSel.appendChild(o2);
+  });
+  if (subs.includes(cur)) subjSel.value = cur;
+  if (subs.includes(editCur)) editSel.value = editCur;
+}
+
+function setEditSubjectValue(subject) {
+  const editSel = document.getElementById('editClassSubject');
+  if (![...editSel.options].some(o => o.value === subject)) {
+    const o = document.createElement('option');
+    o.value = subject; o.textContent = subject;
+    editSel.appendChild(o);
+  }
+  editSel.value = subject;
+}
 
 async function loadYearsForSubject(subject) {
   const sel = document.getElementById('yearSelect');
@@ -368,20 +391,18 @@ async function loadClassesForSubjectYear(subject, year) {
 }
 
 function updateClassCardVisibility() {
-  const isNewSubject = !document.getElementById('subjectSelect').value;
+  const noSubject = !document.getElementById('subjectSelect').value;
   const isNewYear = !document.getElementById('yearSelect').value;
   const isNewClass = !document.getElementById('classSelect').value;
-  document.getElementById('newSubjectField').classList.toggle('hidden', !isNewSubject);
-  document.getElementById('yearSelectField').classList.toggle('hidden', isNewSubject);
-  document.getElementById('newYearField').classList.toggle('hidden', isNewSubject || !isNewYear);
-  document.getElementById('classSelectField').classList.toggle('hidden', isNewSubject || isNewYear);
-  document.getElementById('newClassFields').classList.toggle('hidden', !(isNewSubject || isNewYear || isNewClass));
-  document.getElementById('deleteClassBtn').classList.toggle('hidden', !(!isNewSubject && !isNewYear && !isNewClass));
+  document.getElementById('yearSelectField').classList.toggle('hidden', noSubject);
+  document.getElementById('newYearField').classList.toggle('hidden', noSubject || !isNewYear);
+  document.getElementById('classSelectField').classList.toggle('hidden', noSubject || isNewYear);
+  document.getElementById('newClassFields').classList.toggle('hidden', noSubject || !(isNewYear || isNewClass));
+  document.getElementById('deleteClassBtn').classList.toggle('hidden', noSubject || isNewYear || isNewClass);
 }
 
 document.getElementById('subjectSelect').addEventListener('change', async e => {
   const subject = e.target.value;
-  document.getElementById('newSubjectInput').value = '';
   document.getElementById('newYearInput').value = '';
   document.getElementById('newClassName').value = '';
   document.getElementById('yearSelect').innerHTML = '<option value="">— 新增學年度 —</option>';
@@ -458,6 +479,8 @@ function renderCatalog() {
       if (!confirm('確定要從科別目錄刪除「' + s + '」嗎？（不會動到已經用這個科別建立的班級或題庫）')) return;
       await deleteDoc(doc(db, 'subjects', s));
       catalogSubjects.delete(s);
+      rootCatalog = [...catalogSubjects];
+      populateSubjectSelects();
       refreshKnownSubjects();
       renderCatalog();
     });
@@ -483,6 +506,8 @@ document.getElementById('addCatalogSubjectBtn').addEventListener('click', async 
   try {
     await setDoc(doc(db, 'subjects', s), { addedAt: serverTimestamp() });
     catalogSubjects.add(s);
+    rootCatalog = [...catalogSubjects];
+    populateSubjectSelects();
     input.value = '';
     refreshKnownSubjects();
     renderCatalog();
@@ -504,6 +529,8 @@ async function loadSubjectCatalog(teacherSnap) {
   }
   renderCatalog();
   refreshKnownSubjects();
+  rootCatalog = [...catalogSubjects];
+  populateSubjectSelects();
 }
 
 let editingTeacherEmail = null;
@@ -625,32 +652,24 @@ document.getElementById('useClassBtn').addEventListener('click', async () => {
   const errEl = document.getElementById('classErr');
   errEl.textContent = '';
   try {
-    const isNewSubject = !subjSel.value;
-    const subject = isNewSubject ? document.getElementById('newSubjectInput').value.trim() : subjSel.value;
-    if (!subject) { errEl.textContent = '請輸入科別'; return; }
-    if (isNewSubject) {
+    const subject = subjSel.value;
+    if (!subject) { errEl.textContent = '請先選擇科別'; return; }
+    if (isRoot && !mySubjects.includes(subject)) {
       mySubjects = [...mySubjects, subject];
       await setDoc(doc(db, 'teachers', myEmail), { subjects: mySubjects }, { merge: true });
-      const dsOpt = document.createElement('option');
-      dsOpt.value = subject;
-      document.getElementById('subjectOptions').appendChild(dsOpt);
-      const ssOpt = document.createElement('option');
-      ssOpt.value = subject; ssOpt.textContent = subject;
-      subjSel.appendChild(ssOpt);
-      subjSel.value = subject;
     }
 
-    const isNewYear = isNewSubject || !yearSel.value;
+    const isNewYear = !yearSel.value;
     const academicYear = isNewYear ? document.getElementById('newYearInput').value.trim() : yearSel.value;
     if (!academicYear) { errEl.textContent = '請輸入學年度，例如 114-1'; return; }
-    if (isNewYear && !isNewSubject) {
+    if (isNewYear) {
       const yOpt = document.createElement('option');
       yOpt.value = academicYear; yOpt.textContent = academicYear;
       yearSel.appendChild(yOpt);
       yearSel.value = academicYear;
     }
 
-    if (!isNewSubject && !isNewYear && sel.value) {
+    if (!isNewYear && sel.value) {
       classId = sel.value;
       classData = (await getDoc(doc(db, 'classes', classId))).data();
     } else {
@@ -660,15 +679,13 @@ document.getElementById('useClassBtn').addEventListener('click', async () => {
       classData = { name, academicYear, subject, teacherId: myUid, createdAt: serverTimestamp() };
       await setDoc(ref, classData);
       classId = ref.id;
-      if (!isNewSubject) {
-        await loadClassesForSubjectYear(subject, academicYear);
-        document.getElementById('classSelect').value = classId;
-      }
+      await loadClassesForSubjectYear(subject, academicYear);
+      document.getElementById('classSelect').value = classId;
     }
     updateClassCardVisibility();
     document.getElementById('editClassName').value = classData.name;
     document.getElementById('editClassYear').value = classData.academicYear || '';
-    document.getElementById('editClassSubject').value = classData.subject;
+    setEditSubjectValue(classData.subject);
     document.getElementById('editClassArea').classList.remove('hidden');
     document.getElementById('editClassFields').classList.add('hidden');
     document.getElementById('toggleEditClassBtn').textContent = '展開編輯';
@@ -707,19 +724,11 @@ document.getElementById('saveClassEditBtn').addEventListener('click', async () =
     }
     if (newSubject !== oldSubject || newYear !== oldYear) {
       const subjSel = document.getElementById('subjectSelect');
-      if (!mySubjects.includes(newSubject)) {
+      if (isRoot && !mySubjects.includes(newSubject)) {
         mySubjects = [...mySubjects, newSubject];
         await setDoc(doc(db, 'teachers', myEmail), { subjects: mySubjects }, { merge: true });
-        const dsOpt = document.createElement('option');
-        dsOpt.value = newSubject;
-        document.getElementById('subjectOptions').appendChild(dsOpt);
       }
-      subjSel.innerHTML = '<option value="">— 新增科別 —</option>';
-      mySubjects.forEach(s => {
-        const opt = document.createElement('option');
-        opt.value = s; opt.textContent = s;
-        subjSel.appendChild(opt);
-      });
+      populateSubjectSelects();
       subjSel.value = newSubject;
       await loadYearsForSubject(newSubject);
       document.getElementById('yearSelect').value = newYear;
