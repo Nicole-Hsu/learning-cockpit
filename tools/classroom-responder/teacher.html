@@ -181,9 +181,14 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
           <div id="qrBox" style="margin-top:10px;"></div>
         </div>
       </div>
-      <div style="margin-top:16px;">
+      <div id="sessionActiveArea" style="margin-top:16px;">
         <button class="btn secondary" id="endSessionBtn" style="color:var(--danger);">結束今天的課</button>
         <button class="btn secondary" id="showLeaderboardBtn">看排行榜</button>
+      </div>
+      <div id="sessionEndedArea" class="hidden" style="margin-top:16px;">
+        <span class="badge" style="background:var(--text-dim);">已結束</span>
+        <button class="btn secondary" id="showLeaderboardBtnEnded">看排行榜</button>
+        <button class="btn secondary" id="startNewSessionBtn">開始新的一堂課</button>
       </div>
     </div>
   </div>
@@ -711,15 +716,22 @@ async function loadPublishSelect() {
     opt.value = d.id; opt.textContent = d.data().title;
     sel.appendChild(opt);
   });
-  renderPublishPreview();
+  await renderPublishPreview();
 }
 
-function renderPublishPreview() {
+async function renderPublishPreview() {
   const preview = document.getElementById('publishPreview');
   const bankId = document.getElementById('publishBankSelect').value;
   const bank = publishBankCache[bankId];
   if (!bank) { preview.innerHTML = ''; return; }
-  let html = '<div style="font-size:.8rem;color:var(--text-mid);margin-bottom:8px;">限時 ' + bank.timeLimitSeconds + ' 秒，共 ' + bank.subQuestions.length + ' 小題——勾選這次要發布的小題：</div>';
+  let warningHtml = '';
+  if (sessionId) {
+    const runSnap = await getDoc(doc(db, 'sessions', sessionId, 'runs', bankId));
+    if (runSnap.exists()) {
+      warningHtml = '<div style="background:#fff3cd;color:#8a6d1a;border:1px solid #f0d878;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:.85rem;">⚠️ 這個大題今天已經發布過了。再發布一次會蓋掉上一次的計時起點，學生端可能會看到「已作答」的舊紀錄，不是乾淨的新一輪。</div>';
+    }
+  }
+  let html = warningHtml + '<div style="font-size:.8rem;color:var(--text-mid);margin-bottom:8px;">限時 ' + bank.timeLimitSeconds + ' 秒，共 ' + bank.subQuestions.length + ' 小題——勾選這次要發布的小題：</div>';
   bank.subQuestions.forEach(sq => {
     html += '<div class="subq-block" style="margin-bottom:10px;">' +
       '<label style="display:flex;gap:8px;align-items:flex-start;font-weight:600;margin-bottom:6px;cursor:pointer;">' +
@@ -747,17 +759,43 @@ function randomCode() {
 
 async function checkTodaySession() {
   const snap = await getDocs(query(
-    collection(db, 'sessions'), where('classId', '==', classId), where('date', '==', todayStr()), where('status', '==', 'active')
+    collection(db, 'sessions'), where('classId', '==', classId), where('date', '==', todayStr())
   ));
-  if (!snap.empty) {
-    sessionId = snap.docs[0].id;
-    sessionData = snap.docs[0].data();
-    showSessionInfo();
-    await watchActiveRun();
-  } else {
+  if (snap.empty) {
     sessionId = null; sessionData = null;
     document.getElementById('sessionInfoArea').classList.add('hidden');
+    return;
   }
+  // 優先接續還在進行的場次；沒有進行中的，就接上今天最近結束的那一個，讓「結束今天的課」之後還能回來看排行榜
+  const activeDoc = snap.docs.find(d => d.data().status === 'active');
+  const chosen = activeDoc || snap.docs.sort((a, b) =>
+    (b.data().createdAt && b.data().createdAt.toMillis ? b.data().createdAt.toMillis() : 0) -
+    (a.data().createdAt && a.data().createdAt.toMillis ? a.data().createdAt.toMillis() : 0)
+  )[0];
+  sessionId = chosen.id;
+  sessionData = chosen.data();
+  showSessionInfo();
+  if (sessionData.status === 'active') {
+    showSessionActiveUI();
+    await watchActiveRun();
+  } else {
+    showSessionEndedUI();
+  }
+}
+
+function showSessionActiveUI() {
+  document.getElementById('sessionActiveArea').classList.remove('hidden');
+  document.getElementById('sessionEndedArea').classList.add('hidden');
+}
+
+function showSessionEndedUI() {
+  document.getElementById('sessionActiveArea').classList.add('hidden');
+  document.getElementById('sessionEndedArea').classList.remove('hidden');
+  document.getElementById('runCard').classList.add('hidden');
+  if (unsubRun) unsubRun();
+  if (unsubJoined) unsubJoined();
+  if (unsubResponses) unsubResponses();
+  if (countdownTimer) clearInterval(countdownTimer);
 }
 
 function showSessionInfo() {
@@ -788,12 +826,13 @@ document.getElementById('publishBtn').addEventListener('click', async () => {
       .map((sq, i) => ({ ...sq, order: i + 1 }));
     if (!chosenSubQuestions.length) { errEl.textContent = '請至少勾選一個小題'; return; }
 
-    if (!sessionId) {
+    if (!sessionId || sessionData.status !== 'active') {
       const code = randomCode();
       sessionData = { classId, teacherId: myUid, date: todayStr(), status: 'active', createdAt: serverTimestamp() };
       await setDoc(doc(db, 'sessions', code), sessionData);
       sessionId = code;
       showSessionInfo();
+      showSessionActiveUI();
     }
     await setDoc(doc(db, 'sessions', sessionId, 'runs', bankId), {
       title: bank.title, timeLimitSeconds: bank.timeLimitSeconds, subQuestions: chosenSubQuestions,
@@ -889,14 +928,15 @@ document.getElementById('newRunBtn').addEventListener('click', () => {
 });
 
 document.getElementById('endSessionBtn').addEventListener('click', async () => {
-  if (!confirm('確定要結束今天的課嗎？結束後這個場次代碼就不能再發布新大題了。')) return;
+  if (!confirm('確定要結束今天的課嗎？結束後這個場次代碼就不能再發布新大題了，但還是可以回來看排行榜。')) return;
   await updateDoc(doc(db, 'sessions', sessionId), { status: 'ended', endedAt: serverTimestamp() });
-  if (unsubRun) unsubRun();
-  if (unsubJoined) unsubJoined();
-  if (unsubResponses) unsubResponses();
-  if (countdownTimer) clearInterval(countdownTimer);
-  document.getElementById('runCard').classList.add('hidden');
-  await checkTodaySession();
+  sessionData.status = 'ended';
+  showSessionEndedUI();
+});
+
+document.getElementById('startNewSessionBtn').addEventListener('click', () => {
+  sessionId = null; sessionData = null;
+  document.getElementById('sessionInfoArea').classList.add('hidden');
 });
 
 // ---------- 排行榜 ----------
@@ -941,11 +981,13 @@ async function renderLeaderboard() {
   }
 }
 
-document.getElementById('showLeaderboardBtn').addEventListener('click', () => {
+function openLeaderboard() {
   document.getElementById('leaderboardCard').classList.remove('hidden');
   document.getElementById('leaderboardCard').scrollIntoView({ behavior: 'smooth' });
   renderLeaderboard();
-});
+}
+document.getElementById('showLeaderboardBtn').addEventListener('click', openLeaderboard);
+document.getElementById('showLeaderboardBtnEnded').addEventListener('click', openLeaderboard);
 document.getElementById('recalcLeaderboardBtn').addEventListener('click', renderLeaderboard);
 </script>
 </body>
