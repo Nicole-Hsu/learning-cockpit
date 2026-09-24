@@ -1037,7 +1037,14 @@ document.getElementById('downloadTemplateLink').addEventListener('click', e => {
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 });
 
-document.getElementById('parseImportBtn').addEventListener('click', () => {
+const titleKey = t => String(t).trim().toLowerCase();
+
+async function fetchActiveTitleKeys() {
+  const snap = await getDocs(query(collection(db, 'questionBanks'), where('subject', '==', classData.subject)));
+  return new Set(snap.docs.map(d => d.data()).filter(b => !b.deleted).map(b => titleKey(b.title)));
+}
+
+document.getElementById('parseImportBtn').addEventListener('click', async () => {
   const preview = document.getElementById('importPreview');
   const confirmBtn = document.getElementById('confirmImportBtn');
   const text = document.getElementById('importText').value;
@@ -1046,18 +1053,23 @@ document.getElementById('parseImportBtn').addEventListener('click', () => {
   if (!text.trim()) { preview.innerHTML = '<span style="color:var(--danger);">請先貼上從 Excel 複製的內容</span>'; return; }
   const { banks, errors } = buildImportBanks(parseTSV(text));
   const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  let existing = new Set();
+  try { existing = await fetchActiveTitleKeys(); }
+  catch (e) { preview.innerHTML = '<span style="color:var(--danger);">無法檢查同名題庫：' + esc(e.message) + '</span>'; return; }
+  banks.filter(b => existing.has(titleKey(b.title))).forEach(b => {
+    errors.push('單元「' + b.title + '」在「' + classData.subject + '」科別已經有同名題庫，不能重複匯入。請改單元名稱，或先到單元題庫刪除舊的那份。');
+  });
   let html = '';
   if (errors.length) {
     html += '<div style="color:var(--danger);margin-bottom:10px;"><b>有 ' + errors.length + ' 個問題，請修正 Excel 後重新複製貼上：</b><ul style="padding-left:20px;margin-top:4px;">' +
       errors.map(m => '<li>' + esc(m) + '</li>').join('') + '</ul></div>';
   }
   if (banks.length) {
-    const existing = new Set(Object.values(publishBankCache).map(b => b.title));
     html += '<div style="margin-bottom:6px;"><b>解析到 ' + banks.length + ' 個大題（共 ' + banks.reduce((n, b) => n + b.subQuestions.length, 0) + ' 個小題）：</b></div>';
     banks.forEach(b => {
       html += '<div class="subq-block" style="margin-bottom:8px;"><div style="font-weight:600;">' + esc(b.title) +
         '<span style="color:var(--text-dim);font-weight:400;">　限時 ' + b.timeLimitSeconds + ' 秒，' + b.subQuestions.length + ' 小題</span>' +
-        (existing.has(b.title) ? '<span style="color:#8a6d1a;">　⚠️ 這個科別已經有同名題庫，匯入後會多一份</span>' : '') + '</div>' +
+        (existing.has(titleKey(b.title)) ? '<span style="color:var(--danger);">　❌ 同名題庫已存在</span>' : '') + '</div>' +
         '<ol style="padding-left:20px;font-size:.85rem;color:var(--text-mid);margin-top:4px;">' +
         b.subQuestions.map(s => '<li>' + esc(s.content.length > 40 ? s.content.slice(0, 40) + '…' : s.content) + '（正解 ' + s.correctAnswer + (s.imageUrls.length ? '，' + s.imageUrls.length + ' 張圖' : '') + '）</li>').join('') +
         '</ol></div>';
@@ -1080,6 +1092,15 @@ document.getElementById('confirmImportBtn').addEventListener('click', async () =
   const confirmBtn = document.getElementById('confirmImportBtn');
   confirmBtn.disabled = true;
   try {
+    const latest = await fetchActiveTitleKeys();
+    const clash = pendingImport.filter(b => latest.has(titleKey(b.title)));
+    if (clash.length) {
+      preview.innerHTML += '<div style="color:var(--danger);margin-top:8px;">剛剛有人建立了同名題庫（' + clash.map(b => b.title.replace(/</g, '&lt;')).join('、') + '），為避免重複沒有匯入。請改單元名稱後重新解析。</div>';
+      pendingImport = null;
+      confirmBtn.classList.add('hidden');
+      confirmBtn.disabled = false;
+      return;
+    }
     const batch = writeBatch(db);
     pendingImport.forEach(b => {
       batch.set(doc(collection(db, 'questionBanks')), {
