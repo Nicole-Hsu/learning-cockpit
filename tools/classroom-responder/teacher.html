@@ -85,7 +85,7 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
   </div>
 
   <div class="card hidden" id="classCard">
-    <h2>科別與班級</h2>
+    <h2>科別、學年度與班級</h2>
     <div class="field">
       <label>選擇科別</label>
       <select id="subjectSelect"><option value="">— 新增科別 —</option></select>
@@ -95,27 +95,33 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
       <input id="newSubjectInput" placeholder="例如：護理">
       <datalist id="subjectOptions"></datalist>
     </div>
+
+    <div class="field hidden" id="yearSelectField">
+      <label>選擇學年度</label>
+      <select id="yearSelect"><option value="">— 新增學年度 —</option></select>
+    </div>
+    <div class="field hidden" id="newYearField">
+      <label>新學年度</label>
+      <input id="newYearInput" placeholder="例如：114-1" style="max-width:160px;">
+    </div>
+
     <div class="field hidden" id="classSelectField">
-      <label>選擇這個科別底下的既有班級</label>
+      <label>選擇這個科別／學年度底下的既有班級</label>
       <select id="classSelect"><option value="">— 新增班級 —</option></select>
     </div>
-    <div id="newClassFields">
+    <div id="newClassFields" class="hidden">
       <div class="field">
         <label>新班級名稱</label>
         <input id="newClassName" placeholder="例如 三年一班">
       </div>
-      <div class="field">
-        <label>學年度</label>
-        <input id="newClassYear" placeholder="例如：114-1" style="max-width:160px;">
-      </div>
     </div>
     <div class="row" style="align-items:center;">
-      <button class="btn" id="useClassBtn">使用這個班級</button>
+      <button class="btn hidden" id="useClassBtn">使用這個班級</button>
       <button class="btn secondary hidden" id="deleteClassBtn" style="color:var(--danger);flex:0 0 auto;">刪除這個班級</button>
     </div>
     <div class="err" id="classErr"></div>
     <div id="editClassArea" class="hidden" style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px;">
-      <div style="font-size:.82rem;font-weight:600;color:var(--text-mid);margin-bottom:8px;">改這個班級的名稱／科別（打錯字可以在這裡改，不用整個刪掉重建）</div>
+      <div style="font-size:.82rem;font-weight:600;color:var(--text-mid);margin-bottom:8px;">改這個班級的名稱／學年度／科別（打錯字可以在這裡改，不用整個刪掉重建）</div>
       <div class="field"><label>班級名稱</label><input id="editClassName"></div>
       <div class="field"><label>學年度</label><input id="editClassYear" placeholder="例如：114-1" style="max-width:160px;"></div>
       <div class="field"><label>科別</label><input id="editClassSubject" list="subjectOptions"></div>
@@ -305,33 +311,72 @@ onAuthStateChanged(auth, async user => {
     opt.value = s; opt.textContent = s;
     subjSel.appendChild(opt);
   });
+  updateClassCardVisibility();
 });
 
-async function loadClassesForSubject(subject) {
-  const sel = document.getElementById('classSelect');
-  sel.innerHTML = '<option value="">— 新增班級 —</option>';
+async function loadYearsForSubject(subject) {
+  const sel = document.getElementById('yearSelect');
+  sel.innerHTML = '<option value="">— 新增學年度 —</option>';
   const snap = await getDocs(query(collection(db, 'classes'), where('teacherId', '==', myUid), where('subject', '==', subject)));
-  snap.forEach(d => {
+  const years = [...new Set(snap.docs.map(d => d.data().academicYear).filter(Boolean))];
+  years.sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+  years.forEach(y => {
     const opt = document.createElement('option');
-    opt.value = d.id;
-    opt.textContent = d.data().name + (d.data().academicYear ? '（' + d.data().academicYear + '）' : '');
+    opt.value = y; opt.textContent = y;
     sel.appendChild(opt);
   });
 }
 
+async function loadClassesForSubjectYear(subject, year) {
+  const sel = document.getElementById('classSelect');
+  sel.innerHTML = '<option value="">— 新增班級 —</option>';
+  const snap = await getDocs(query(
+    collection(db, 'classes'), where('teacherId', '==', myUid), where('subject', '==', subject), where('academicYear', '==', year)
+  ));
+  snap.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d.id; opt.textContent = d.data().name;
+    sel.appendChild(opt);
+  });
+}
+
+function updateClassCardVisibility() {
+  const isNewSubject = !document.getElementById('subjectSelect').value;
+  const isNewYear = !document.getElementById('yearSelect').value;
+  const isNewClass = !document.getElementById('classSelect').value;
+  document.getElementById('newSubjectField').classList.toggle('hidden', !isNewSubject);
+  document.getElementById('yearSelectField').classList.toggle('hidden', isNewSubject);
+  document.getElementById('newYearField').classList.toggle('hidden', isNewSubject || !isNewYear);
+  document.getElementById('classSelectField').classList.toggle('hidden', isNewSubject || isNewYear);
+  document.getElementById('newClassFields').classList.toggle('hidden', !(isNewSubject || isNewYear || isNewClass));
+  document.getElementById('deleteClassBtn').classList.toggle('hidden', !(!isNewSubject && !isNewYear && !isNewClass));
+}
+
 document.getElementById('subjectSelect').addEventListener('change', async e => {
   const subject = e.target.value;
-  const isNew = !subject;
-  document.getElementById('newSubjectField').classList.toggle('hidden', !isNew);
-  document.getElementById('classSelectField').classList.toggle('hidden', isNew);
-  document.getElementById('newClassFields').classList.remove('hidden');
-  document.getElementById('deleteClassBtn').classList.add('hidden');
-  document.getElementById('editClassArea').classList.add('hidden');
+  document.getElementById('newSubjectInput').value = '';
+  document.getElementById('newYearInput').value = '';
   document.getElementById('newClassName').value = '';
-  document.getElementById('newClassYear').value = '';
-  if (!isNew) {
-    await loadClassesForSubject(subject);
+  document.getElementById('yearSelect').innerHTML = '<option value="">— 新增學年度 —</option>';
+  document.getElementById('classSelect').innerHTML = '<option value="">— 新增班級 —</option>';
+  document.getElementById('editClassArea').classList.add('hidden');
+  if (subject) {
+    await loadYearsForSubject(subject);
   }
+  updateClassCardVisibility();
+});
+
+document.getElementById('yearSelect').addEventListener('change', async e => {
+  const subject = document.getElementById('subjectSelect').value;
+  const year = e.target.value;
+  document.getElementById('newYearInput').value = '';
+  document.getElementById('newClassName').value = '';
+  document.getElementById('classSelect').innerHTML = '<option value="">— 新增班級 —</option>';
+  document.getElementById('editClassArea').classList.add('hidden');
+  if (year) {
+    await loadClassesForSubjectYear(subject, year);
+  }
+  updateClassCardVisibility();
 });
 
 async function loadTeacherList() {
@@ -381,11 +426,11 @@ document.getElementById('backToClassBtn').addEventListener('click', () => {
   document.getElementById('classCard').scrollIntoView({ behavior: 'smooth' });
 });
 
-document.getElementById('classSelect').addEventListener('change', e => {
-  document.getElementById('newClassFields').classList.toggle('hidden', !!e.target.value);
-  document.getElementById('deleteClassBtn').classList.toggle('hidden', !e.target.value);
+document.getElementById('classSelect').addEventListener('change', () => {
+  document.getElementById('newClassName').value = '';
+  document.getElementById('editClassArea').classList.add('hidden');
+  updateClassCardVisibility();
 });
-document.getElementById('deleteClassBtn').classList.add('hidden');
 
 function parseSeatNos(text) {
   const tokens = text.split(/[,，\n]+/).map(t => t.trim()).filter(Boolean);
@@ -404,6 +449,7 @@ function parseSeatNos(text) {
 document.getElementById('useClassBtn').addEventListener('click', async () => {
   const sel = document.getElementById('classSelect');
   const subjSel = document.getElementById('subjectSelect');
+  const yearSel = document.getElementById('yearSelect');
   const errEl = document.getElementById('classErr');
   errEl.textContent = '';
   try {
@@ -420,23 +466,34 @@ document.getElementById('useClassBtn').addEventListener('click', async () => {
       ssOpt.value = subject; ssOpt.textContent = subject;
       subjSel.appendChild(ssOpt);
       subjSel.value = subject;
-      document.getElementById('newSubjectField').classList.add('hidden');
-      document.getElementById('classSelectField').classList.remove('hidden');
-      await loadClassesForSubject(subject);
     }
-    if (sel.value) {
+
+    const isNewYear = isNewSubject || !yearSel.value;
+    const academicYear = isNewYear ? document.getElementById('newYearInput').value.trim() : yearSel.value;
+    if (!academicYear) { errEl.textContent = '請輸入學年度，例如 114-1'; return; }
+    if (isNewYear && !isNewSubject) {
+      const yOpt = document.createElement('option');
+      yOpt.value = academicYear; yOpt.textContent = academicYear;
+      yearSel.appendChild(yOpt);
+      yearSel.value = academicYear;
+    }
+
+    if (!isNewSubject && !isNewYear && sel.value) {
       classId = sel.value;
       classData = (await getDoc(doc(db, 'classes', classId))).data();
     } else {
       const name = document.getElementById('newClassName').value.trim();
-      const academicYear = document.getElementById('newClassYear').value.trim();
       if (!name) { errEl.textContent = '請輸入班級名稱'; return; }
-      if (!academicYear) { errEl.textContent = '請輸入學年度，例如 114-1'; return; }
       const ref = doc(collection(db, 'classes'));
       classData = { name, academicYear, subject, teacherId: myUid, createdAt: serverTimestamp() };
       await setDoc(ref, classData);
       classId = ref.id;
+      if (!isNewSubject) {
+        await loadClassesForSubjectYear(subject, academicYear);
+        document.getElementById('classSelect').value = classId;
+      }
     }
+    updateClassCardVisibility();
     document.getElementById('editClassName').value = classData.name;
     document.getElementById('editClassYear').value = classData.academicYear || '';
     document.getElementById('editClassSubject').value = classData.subject;
@@ -461,6 +518,7 @@ document.getElementById('saveClassEditBtn').addEventListener('click', async () =
   if (!newYear) { errEl.textContent = '請輸入學年度'; return; }
   if (!newSubject) { errEl.textContent = '請輸入科別'; return; }
   const oldSubject = classData.subject;
+  const oldYear = classData.academicYear;
   try {
     await updateDoc(doc(db, 'classes', classId), { name: newName, academicYear: newYear, subject: newSubject });
     classData.name = newName; classData.academicYear = newYear; classData.subject = newSubject;
@@ -472,6 +530,8 @@ document.getElementById('saveClassEditBtn').addEventListener('click', async () =
         banksSnap.docs.forEach(d => batch.update(d.ref, { subject: newSubject }));
         if (banksSnap.docs.length) await batch.commit();
       }
+    }
+    if (newSubject !== oldSubject || newYear !== oldYear) {
       const subjSel = document.getElementById('subjectSelect');
       if (!mySubjects.includes(newSubject)) {
         mySubjects = [...mySubjects, newSubject];
@@ -479,20 +539,22 @@ document.getElementById('saveClassEditBtn').addEventListener('click', async () =
         const dsOpt = document.createElement('option');
         dsOpt.value = newSubject;
         document.getElementById('subjectOptions').appendChild(dsOpt);
-        const ssOpt = document.createElement('option');
-        ssOpt.value = newSubject; ssOpt.textContent = newSubject;
-        subjSel.appendChild(ssOpt);
       }
+      subjSel.innerHTML = '<option value="">— 新增科別 —</option>';
+      mySubjects.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s; opt.textContent = s;
+        subjSel.appendChild(opt);
+      });
       subjSel.value = newSubject;
-      document.getElementById('newSubjectField').classList.add('hidden');
-      document.getElementById('classSelectField').classList.remove('hidden');
-      await loadClassesForSubject(newSubject);
+      await loadYearsForSubject(newSubject);
+      document.getElementById('yearSelect').value = newYear;
+      await loadClassesForSubjectYear(newSubject, newYear);
       document.getElementById('classSelect').value = classId;
-      document.getElementById('newClassFields').classList.add('hidden');
-      document.getElementById('deleteClassBtn').classList.remove('hidden');
+      updateClassCardVisibility();
     } else {
       const opt = document.querySelector('#classSelect option[value="' + classId + '"]');
-      if (opt) opt.textContent = newName + '（' + newYear + '）';
+      if (opt) opt.textContent = newName;
     }
     await loadBankList();
     await loadPublishSelect();
@@ -516,8 +578,7 @@ document.getElementById('deleteClassBtn').addEventListener('click', async () => 
     await deleteDoc(doc(db, 'classes', targetClassId));
     sel.remove(sel.selectedIndex);
     sel.value = '';
-    document.getElementById('newClassFields').classList.remove('hidden');
-    document.getElementById('deleteClassBtn').classList.add('hidden');
+    updateClassCardVisibility();
     document.getElementById('editClassArea').classList.add('hidden');
   } catch (e) { alert('刪除失敗：' + e.message); }
 });
