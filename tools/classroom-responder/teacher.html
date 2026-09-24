@@ -201,6 +201,11 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
           <div id="qrBox" style="margin-top:10px;"></div>
         </div>
       </div>
+      <div style="margin:16px 0;font-size:.85rem;color:var(--text-mid);">
+        已加入 <b id="joinedCount">0</b> / <span id="rosterTotal">0</span> 人
+        <button class="btn secondary small" id="toggleJoinedListBtn" style="margin-left:8px;">展開名單</button>
+      </div>
+      <div id="joinedList" class="hidden" style="margin-bottom:14px;"></div>
       <div id="sessionActiveArea" style="margin-top:16px;">
         <button class="btn secondary" id="endSessionBtn" style="color:var(--danger);">結束今天的課</button>
         <button class="btn secondary" id="showLeaderboardBtn">看排行榜</button>
@@ -218,11 +223,6 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
       <h2 style="margin-bottom:0;" id="runTitle">進行中的大題</h2>
       <span class="countdown" id="runCountdown">--:--</span>
     </div>
-    <div style="margin:10px 0;font-size:.85rem;color:var(--text-mid);">
-      已加入 <b id="joinedCount">0</b> / <span id="rosterTotal">0</span> 人
-      <button class="btn secondary small" id="toggleJoinedListBtn" style="margin-left:8px;">展開名單</button>
-    </div>
-    <div id="joinedList" class="hidden" style="margin-bottom:14px;"></div>
     <div id="voteBoard" style="margin-top:14px;"></div>
     <div style="margin-top:16px;">
       <button class="btn secondary" id="endRunBtn" style="color:var(--danger);">結束這一大題</button>
@@ -944,6 +944,18 @@ function showSessionInfo() {
   };
   document.getElementById('qrBox').innerHTML = '';
   new QRCode(document.getElementById('qrBox'), { text: url, width: 140, height: 140 });
+
+  if (unsubJoined) unsubJoined();
+  getDocs(collection(db, 'classes', classId, 'students')).then(rosterSnap => {
+    const roster = rosterSnap.docs.map(d => d.data().seatNo || d.id).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    document.getElementById('rosterTotal').textContent = roster.length;
+    unsubJoined = onSnapshot(collection(db, 'sessions', sessionId, 'joined'), snap => {
+      const joinedMap = {};
+      snap.forEach(d => { joinedMap[d.id] = d.data(); });
+      document.getElementById('joinedCount').textContent = snap.size;
+      renderJoinedList(roster, joinedMap);
+    });
+  });
 }
 
 document.getElementById('publishBtn').addEventListener('click', async () => {
@@ -997,18 +1009,6 @@ function openRunBoard() {
     currentRunData = snap.data();
     if (!currentRunData) return;
     startCountdown();
-  });
-
-  if (unsubJoined) unsubJoined();
-  getDocs(collection(db, 'classes', classId, 'students')).then(rosterSnap => {
-    const roster = rosterSnap.docs.map(d => d.data().seatNo || d.id).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-    document.getElementById('rosterTotal').textContent = roster.length;
-    unsubJoined = onSnapshot(collection(db, 'sessions', sessionId, 'joined'), snap => {
-      const joinedMap = {};
-      snap.forEach(d => { joinedMap[d.id] = d.data(); });
-      document.getElementById('joinedCount').textContent = snap.size;
-      renderJoinedList(roster, joinedMap);
-    });
   });
 
   if (unsubResponses) unsubResponses();

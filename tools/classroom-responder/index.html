@@ -105,7 +105,7 @@ const OPT_LABELS = ['A', 'B', 'C', 'D'];
 
 let classId = null, mySeat = null;
 let currentRunBankId = null, currentRunData = null, currentBankSnapshot = null;
-let countdownTimer = null, unsubRun = null;
+let countdownTimer = null, unsubRun = null, unsubJoinedList = null;
 let myResponses = {};
 
 function showError(msg) {
@@ -140,17 +140,23 @@ async function init() {
 
 async function showJoinCard() {
   const sel = document.getElementById('seatSelect');
-  sel.innerHTML = '';
   const rosterSnap = await getDocs(collection(db, 'classes', classId, 'students'));
   const roster = rosterSnap.docs.map(d => d.data().seatNo || d.id).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  const joinedSnap = await getDocs(collection(db, 'sessions', sessionId, 'joined'));
-  const joinedSet = new Set(joinedSnap.docs.map(d => d.id));
-  roster.forEach(seatNo => {
-    const opt = document.createElement('option');
-    opt.value = seatNo;
-    opt.textContent = seatNo + ' 號' + (joinedSet.has(seatNo) ? '（已有人加入）' : '');
-    sel.appendChild(opt);
+
+  if (unsubJoinedList) unsubJoinedList();
+  unsubJoinedList = onSnapshot(collection(db, 'sessions', sessionId, 'joined'), snap => {
+    const joinedSet = new Set(snap.docs.map(d => d.id));
+    const prevValue = sel.value;
+    sel.innerHTML = '';
+    roster.forEach(seatNo => {
+      const opt = document.createElement('option');
+      opt.value = seatNo;
+      opt.textContent = seatNo + ' 號' + (joinedSet.has(seatNo) ? '（已有人加入）' : '');
+      sel.appendChild(opt);
+    });
+    if (roster.includes(prevValue)) sel.value = prevValue;
   });
+
   document.getElementById('seatHint').textContent = '如果看到「已有人加入」但不是你本人在用，請告訴老師。';
   document.getElementById('joinCard').classList.remove('hidden');
 }
@@ -175,6 +181,7 @@ document.getElementById('joinBtn').addEventListener('click', async () => {
   const sel = document.getElementById('seatSelect');
   mySeat = sel.value;
   if (!mySeat) { document.getElementById('joinErr').textContent = '請選擇座號'; return; }
+  if (unsubJoinedList) { unsubJoinedList(); unsubJoinedList = null; }
   localStorage.setItem('cr_seat_' + sessionId, mySeat);
   await markJoined();
   document.getElementById('joinCard').classList.add('hidden');
