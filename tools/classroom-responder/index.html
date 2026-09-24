@@ -71,7 +71,10 @@ button, input, select { font-family: inherit; }
   </div>
 
   <div class="card hidden" id="runInfoCard">
-    <p style="font-size:.78rem;text-align:right;margin-bottom:-6px;"><a href="#" id="notMeLink2" style="color:var(--text-dim);">座號選錯了？換座號</a></p>
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:.78rem;margin-bottom:8px;">
+      <span style="color:var(--text-mid);">你的座號：<b id="mySeatDisplay2"></b></span>
+      <a href="#" id="notMeLink2" style="color:var(--text-dim);">座號選錯了？換座號</a>
+    </div>
     <div style="display:flex;justify-content:space-between;align-items:center;">
       <h2 id="runTitle" style="margin-bottom:0;"></h2>
       <span class="countdown" id="runCountdown">--:--</span>
@@ -194,6 +197,7 @@ async function markJoined() {
 
 async function showWaitOrRun() {
   document.getElementById('mySeatDisplay').textContent = mySeat + ' 號';
+  document.getElementById('mySeatDisplay2').textContent = mySeat + ' 號';
   const runsRef = collection(db, 'sessions', sessionId, 'runs');
   if (unsubRun) unsubRun();
   unsubRun = onSnapshot(query(runsRef, orderBy('startedAt', 'desc'), limit(1)), async snap => {
