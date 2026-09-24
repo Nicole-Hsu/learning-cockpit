@@ -61,7 +61,7 @@ button, input, select { font-family: inherit; }
     <h2 style="color:var(--accent-dark);">🏆 排行榜（老師已公布）</h2>
     <div id="lbMine" style="font-weight:700;margin-bottom:10px;"></div>
     <table id="lbTable" style="width:100%;border-collapse:collapse;font-size:.9rem;">
-      <thead><tr style="color:var(--text-mid);font-size:.78rem;text-align:left;"><th style="padding:4px;">名次</th><th style="padding:4px;">座號</th><th style="padding:4px;">答對</th><th style="padding:4px;">總耗時</th></tr></thead>
+      <thead><tr style="color:var(--text-mid);font-size:.78rem;text-align:left;"><th style="padding:4px;">名次</th><th style="padding:4px;">座號</th><th style="padding:4px;">答對</th><th style="padding:4px;">總耗時（分:秒）</th></tr></thead>
       <tbody id="lbBody"></tbody>
     </table>
   </div>
@@ -123,6 +123,11 @@ let classId = null, mySeat = null;
 let currentRunBankId = null, currentRunData = null, currentBankSnapshot = null;
 let countdownTimer = null, unsubRun = null, unsubJoinedList = null, unsubSession = null;
 
+function fmtClock(sec) {
+  sec = Math.max(0, Math.round(sec || 0));
+  return String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0');
+}
+
 function fmtTime(sec) {
   sec = sec || 0;
   return sec >= 60 ? Math.floor(sec / 60) + ' 分 ' + (sec % 60) + ' 秒' : sec + ' 秒';
@@ -142,7 +147,7 @@ function renderLeaderboardCard(lb) {
   const addRow = (r, rank, isMe) => {
     const tr = document.createElement('tr');
     tr.style.cssText = 'border-top:1px solid var(--border);' + (isMe ? 'background:#d9f6f4;font-weight:700;' : '');
-    [rank, r.seatNo, r.correctCount + ' / ' + r.totalSubQs, fmtTime(r.totalTime)].forEach(v => {
+    [rank, r.seatNo, r.correctCount + ' / ' + r.totalSubQs, fmtClock(r.totalTime)].forEach(v => {
       const td = document.createElement('td');
       td.style.padding = '6px 4px';
       td.textContent = v;
