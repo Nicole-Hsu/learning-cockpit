@@ -285,7 +285,7 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
     </div>
     <div style="font-size:.76rem;color:var(--text-dim);margin-top:6px;">公布的是按下當下的排名快照（只含有作答的座號）；學生會看到前 10 名跟自己的名次，之後想更新請再按一次「公布給學生」。</div>
     <table class="lb" id="lbTable" style="margin-top:12px;">
-      <thead><tr><th>名次</th><th>座號</th><th>答對</th><th>作答數</th><th>總耗時</th></tr></thead>
+      <thead><tr><th>名次</th><th>座號</th><th>答對</th><th>作答數</th><th>總耗時（分:秒）</th></tr></thead>
       <tbody id="lbBody"></tbody>
     </table>
   </div>
@@ -1594,7 +1594,7 @@ async function renderLeaderboard() {
     rows.forEach((r, i) => {
       const tr = document.createElement('tr');
       tr.innerHTML = '<td>' + (i + 1) + '</td><td>' + r.seatNo + '</td><td>' + r.correctCount + '</td>' +
-        '<td>' + r.answeredCount + ' / ' + r.totalSubQs + '</td><td>' + r.totalTime + ' 秒</td>';
+        '<td>' + r.answeredCount + ' / ' + r.totalSubQs + '</td><td>' + String(Math.floor((r.totalTime || 0) / 60)).padStart(2, '0') + ':' + String(Math.round(r.totalTime || 0) % 60).padStart(2, '0') + '</td>';
       body.appendChild(tr);
     });
   } catch (e) {
