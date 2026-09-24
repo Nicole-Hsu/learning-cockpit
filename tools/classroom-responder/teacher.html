@@ -146,7 +146,7 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
   </div>
 
   <div class="card hidden" id="newBankCard">
-    <h2>新增大題</h2>
+    <h2 id="bankFormTitle">新增大題</h2>
     <div class="field">
       <label>大題標題</label>
       <input id="bankTitle" placeholder="例如：地層構造判讀">
@@ -549,26 +549,54 @@ function subqBlockHtml(idx) {
   </div>`;
 }
 
-function addSubqBlock() {
+function addSubqBlock(sq) {
   const list = document.getElementById('subqList');
   const idx = list.children.length;
   const div = document.createElement('div');
   div.innerHTML = subqBlockHtml(idx);
   const block = div.firstElementChild;
   block.querySelector('.removeSubqBtn').addEventListener('click', () => block.remove());
+  if (sq) {
+    block.querySelector('.subq-content').value = sq.content || '';
+    block.querySelector('.subq-image').value = sq.imageUrl || '';
+    const optInputs = block.querySelectorAll('.subq-opt');
+    (sq.options || []).forEach((val, i) => { if (optInputs[i]) optInputs[i].value = val; });
+    if (sq.correctAnswer) {
+      const radio = block.querySelector('.subq-correct[value="' + sq.correctAnswer + '"]');
+      if (radio) radio.checked = true;
+    }
+  }
   list.appendChild(block);
 }
 
+let editingBankId = null;
+
 document.getElementById('newBankToggleBtn').addEventListener('click', () => {
+  editingBankId = null;
+  document.getElementById('bankFormTitle').textContent = '新增大題';
+  document.getElementById('bankTitle').value = '';
+  document.getElementById('bankTimeLimit').value = 300;
   document.getElementById('newBankCard').classList.remove('hidden');
   document.getElementById('subqList').innerHTML = '';
   addSubqBlock();
   document.getElementById('newBankCard').scrollIntoView({ behavior: 'smooth' });
 });
-document.getElementById('addSubqBtn').addEventListener('click', addSubqBlock);
+document.getElementById('addSubqBtn').addEventListener('click', () => addSubqBlock());
 document.getElementById('cancelBankBtn').addEventListener('click', () => {
+  editingBankId = null;
   document.getElementById('newBankCard').classList.add('hidden');
 });
+
+function openBankForEdit(bankId, data) {
+  editingBankId = bankId;
+  document.getElementById('bankFormTitle').textContent = '編輯大題：' + data.title;
+  document.getElementById('bankTitle').value = data.title;
+  document.getElementById('bankTimeLimit').value = data.timeLimitSeconds;
+  document.getElementById('subqList').innerHTML = '';
+  data.subQuestions.forEach(sq => addSubqBlock(sq));
+  document.getElementById('newBankCard').classList.remove('hidden');
+  document.getElementById('newBankCard').scrollIntoView({ behavior: 'smooth' });
+}
 
 document.getElementById('saveBankBtn').addEventListener('click', async () => {
   const errEl = document.getElementById('bankErr');
@@ -592,11 +620,16 @@ document.getElementById('saveBankBtn').addEventListener('click', async () => {
     subQuestions.push({ order: i + 1, content, imageUrl: imageUrl || null, options: opts, correctAnswer: correctEl.value });
   }
   try {
-    const ref = doc(collection(db, 'questionBanks'));
-    await setDoc(ref, {
-      subject: classData.subject, title, timeLimitSeconds, subQuestions,
-      createdBy: myUid, createdByEmail: myEmail, createdAt: serverTimestamp()
-    });
+    if (editingBankId) {
+      await updateDoc(doc(db, 'questionBanks', editingBankId), { title, timeLimitSeconds, subQuestions });
+      editingBankId = null;
+    } else {
+      const ref = doc(collection(db, 'questionBanks'));
+      await setDoc(ref, {
+        subject: classData.subject, title, timeLimitSeconds, subQuestions,
+        createdBy: myUid, createdByEmail: myEmail, createdAt: serverTimestamp()
+      });
+    }
     document.getElementById('newBankCard').classList.add('hidden');
     await loadBankList();
     await loadPublishSelect();
@@ -633,6 +666,12 @@ async function loadBankList() {
         row.querySelector('.tl-' + d.id).textContent = val;
       });
       row.appendChild(editBtn);
+
+      const editContentBtn = document.createElement('button');
+      editContentBtn.className = 'btn secondary small';
+      editContentBtn.textContent = '編輯內容';
+      editContentBtn.addEventListener('click', () => openBankForEdit(d.id, data));
+      row.appendChild(editContentBtn);
     }
     listEl.appendChild(row);
   });
