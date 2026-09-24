@@ -865,6 +865,13 @@ async function loadPublishSelect() {
   applyBankSearchFilter();
 }
 
+function imgTag(url) {
+  if (!url) return '';
+  const safe = String(url).replace(/"/g, '&quot;');
+  return '<div><img src="' + safe + '" referrerpolicy="no-referrer" style="max-width:260px;max-height:200px;border-radius:8px;margin:4px 0 6px;" ' +
+    'onerror="this.outerHTML=\'<div style=&quot;color:#d96060;font-size:.8rem;&quot;>圖片載入失敗，請確認貼的是「直接連結」（.jpg/.png 結尾）</div>\'"></div>';
+}
+
 async function renderPublishPreview() {
   const preview = document.getElementById('publishPreview');
   const bankId = document.getElementById('publishBankSelect').value;
@@ -882,7 +889,8 @@ async function renderPublishPreview() {
     html += '<div class="subq-block" style="margin-bottom:10px;">' +
       '<label style="display:flex;gap:8px;align-items:flex-start;font-weight:600;margin-bottom:6px;cursor:pointer;">' +
       '<input type="checkbox" class="subq-pick" data-order="' + sq.order + '" checked style="margin-top:4px;">' +
-      '<span>小題 ' + sq.order + '：' + sq.content + '</span></label>';
+      '<span>小題 ' + sq.order + '：' + sq.content + '</span></label>' +
+      '<div style="padding-left:26px;">' + imgTag(sq.imageUrl) + '</div>';
     OPT_LABELS.forEach((l, i) => {
       html += '<div style="font-size:.88rem;padding-left:26px;' + (l === sq.correctAnswer ? 'color:var(--ok);font-weight:700;' : 'color:var(--text-mid);') + '">' +
         l + '：' + (sq.options[i] || '') + (l === sq.correctAnswer ? '（正解）' : '') + '</div>';
@@ -1088,7 +1096,7 @@ function renderVoteBoard() {
     const total = answers.length || 1;
     const counts = { A: 0, B: 0, C: 0, D: 0 };
     answers.forEach(a => { if (counts[a.selectedAnswer] !== undefined) counts[a.selectedAnswer]++; });
-    let html = '<div class="bar-q">小題 ' + sq.order + '：' + sq.content + '</div>';
+    let html = '<div class="bar-q">小題 ' + sq.order + '：' + sq.content + '</div>' + imgTag(sq.imageUrl);
     OPT_LABELS.forEach((l, i) => {
       const pct = Math.round((counts[l] / total) * 100);
       const isCorrect = l === sq.correctAnswer;
