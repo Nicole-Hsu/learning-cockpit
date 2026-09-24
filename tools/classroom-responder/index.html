@@ -142,7 +142,7 @@ function renderLeaderboardCard(lb) {
   const addRow = (r, rank, isMe) => {
     const tr = document.createElement('tr');
     tr.style.cssText = 'border-top:1px solid var(--border);' + (isMe ? 'background:#d9f6f4;font-weight:700;' : '');
-    [rank, r.seatNo + ' 號', r.correctCount + ' / ' + r.totalSubQs, fmtTime(r.totalTime)].forEach(v => {
+    [rank, r.seatNo, r.correctCount + ' / ' + r.totalSubQs, fmtTime(r.totalTime)].forEach(v => {
       const td = document.createElement('td');
       td.style.padding = '6px 4px';
       td.textContent = v;
