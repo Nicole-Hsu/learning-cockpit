@@ -962,6 +962,11 @@ document.getElementById('saveBankBtn').addEventListener('click', async () => {
     subQuestions.push({ order: i + 1, content, imageUrls, options: opts, correctAnswer: correctEl.value });
   }
   try {
+    const holderId = (await fetchActiveTitleMap()).get(titleKey(title));
+    if (holderId && holderId !== editingBankId) {
+      errEl.textContent = '這個科別已經有同名的單元題庫「' + title + '」，請換一個名稱。';
+      return;
+    }
     if (editingBankId) {
       await updateDoc(doc(db, 'questionBanks', editingBankId), { title, timeLimitSeconds, subQuestions });
       editingBankId = null;
@@ -1039,9 +1044,15 @@ document.getElementById('downloadTemplateLink').addEventListener('click', e => {
 
 const titleKey = t => String(t).trim().toLowerCase();
 
-async function fetchActiveTitleKeys() {
+async function fetchActiveTitleMap() {
   const snap = await getDocs(query(collection(db, 'questionBanks'), where('subject', '==', classData.subject)));
-  return new Set(snap.docs.map(d => d.data()).filter(b => !b.deleted).map(b => titleKey(b.title)));
+  const map = new Map();
+  snap.docs.filter(d => !d.data().deleted).forEach(d => map.set(titleKey(d.data().title), d.id));
+  return map;
+}
+
+async function fetchActiveTitleKeys() {
+  return new Set((await fetchActiveTitleMap()).keys());
 }
 
 document.getElementById('parseImportBtn').addEventListener('click', async () => {
@@ -1143,6 +1154,10 @@ function renderTrash(trashDocs) {
       restoreBtn.className = 'btn secondary small';
       restoreBtn.textContent = '還原';
       restoreBtn.addEventListener('click', async () => {
+        if ((await fetchActiveTitleMap()).has(titleKey(data.title))) {
+          alert('這個科別目前已經有同名的單元題庫「' + data.title + '」，無法還原。請先把現有那份改名或刪除，再還原。');
+          return;
+        }
         await updateDoc(doc(db, 'questionBanks', d.id), { deleted: false, deletedAt: null, deletedBy: null });
         await loadBankList();
         await loadPublishSelect();
