@@ -428,6 +428,23 @@ document.getElementById('addTeacherBtn').addEventListener('click', async () => {
 });
 
 document.getElementById('backToClassBtn').addEventListener('click', () => {
+  classId = null; classData = null; sessionId = null; sessionData = null;
+  if (unsubRun) unsubRun();
+  if (unsubJoined) unsubJoined();
+  if (unsubResponses) unsubResponses();
+  if (countdownTimer) clearInterval(countdownTimer);
+  document.getElementById('rosterCard').classList.add('hidden');
+  document.getElementById('bankListCard').classList.add('hidden');
+  document.getElementById('newBankCard').classList.add('hidden');
+  document.getElementById('sessionCard').classList.add('hidden');
+  document.getElementById('sessionInfoArea').classList.add('hidden');
+  document.getElementById('runCard').classList.add('hidden');
+  document.getElementById('leaderboardCard').classList.add('hidden');
+  document.getElementById('editClassArea').classList.add('hidden');
+  document.getElementById('subjectSelect').value = '';
+  document.getElementById('yearSelect').innerHTML = '<option value="">— 新增學年度 —</option>';
+  document.getElementById('classSelect').innerHTML = '<option value="">— 新增班級 —</option>';
+  updateClassCardVisibility();
   document.getElementById('classCard').scrollIntoView({ behavior: 'smooth' });
 });
 
