@@ -37,6 +37,9 @@ button, input, select, textarea { font-family: inherit; }
 #roomLink { font-size: .9rem; color: var(--accent-dark); word-break: break-all; }
 #qrBox { background: #fff; padding: 8px; border-radius: 10px; display: inline-block; }
 .list-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: .88rem; gap: 10px; }
+#joinedList { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 16px; }
+#joinedList .list-row { padding: 6px 0; }
+@media (max-width: 700px) { #joinedList { grid-template-columns: repeat(2, 1fr); } }
 .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: .74rem; background: var(--ok); color: #fff; }
 .badge.warn { background: var(--danger); }
 .subq-block { border: 1.5px dashed var(--border); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
