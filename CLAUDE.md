@@ -28,7 +28,7 @@
     appId: "1:648909917784:web:29281a92dd32c34656c42d"
   };
   ```
-  - **不用 Firebase Storage**：Storage 需要升級 Blaze 方案綁帳單才能用，這個工具用不到——小題圖片欄位改成**存圖片網址（URL）**。因為題庫是多老師共用（見下方權限說明），統一建議所有老師都用 **Imgur**（imgur.com/upload，不用註冊）上傳圖片、複製圖片網址貼進表單，表單裡「圖片網址」欄位下方已經寫好操作步驟。管理者自己另外也能把圖片放進這個 repo 的 `tools/classroom-responder/images/` 用 GitHub Pages 網址引用，但這個方式要透過 git 操作，其他老師沒辦法自己用，不適合當通用做法。
+  - **不用 Firebase Storage**：Storage 需要升級 Blaze 方案綁帳單才能用，這個工具用不到——小題圖片欄位改成**存圖片網址（URL）**。因為題庫是多老師共用（見下方權限說明），統一建議所有老師用免註冊圖床（ImgBB / Postimages，擇一）上傳圖片、複製「直接連結」（.jpg/.png 結尾）貼進表單，表單裡「圖片網址」欄位下方已經寫好操作步驟。（原本推薦 Imgur，但實測匿名上傳會出現 CREATE_ALBUM_FAIL，不穩，已改掉。）管理者自己另外也能把圖片放進這個 repo 的 `tools/classroom-responder/images/` 用 GitHub Pages 網址引用，但這個方式要透過 git 操作，其他老師沒辦法自己用，不適合當通用做法。
 - **技術路線**：純前端 HTML/CSS/JS（vanilla JS，不用建置工具）+ Firebase（Firestore 即時同步 + Google 登入白名單，**不用 Storage**）。QR code 用 `qrcodejs`（cdnjs），房間/場次代碼用隨機 6 碼（排除易混淆字元）。Firebase 專案另開一個新的，不共用 `kj-affinity-board`。GitHub Pages 已開通，網址：`https://nicole-hsu.github.io/learning-cockpit/tools/classroom-responder/`。
 - **資料模型（設計定案，尚未實作）**：
   - `teachers/{email}`：白名單 + 科別授權（`subjects: []`），比照 kj 的 `allowedEmails` 但多一個科別欄位。

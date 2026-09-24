@@ -668,7 +668,7 @@ function subqBlockHtml(idx) {
       <label>圖片網址（選填）</label>
       <input class="subq-image" placeholder="https://...">
       <div style="font-size:.76rem;color:var(--text-dim);margin-top:4px;">
-        怎麼放圖片：到 <a href="https://imgur.com/upload" target="_blank" style="color:var(--accent-dark);">imgur.com/upload</a>（不用註冊）拖圖片上傳，上傳完在圖片上按右鍵選「複製圖片網址」，貼進這個欄位。
+        怎麼放圖片：到免註冊圖床上傳，例如 <a href="https://imgbb.com" target="_blank" style="color:var(--accent-dark);">imgbb.com</a> 或 <a href="https://postimages.org" target="_blank" style="color:var(--accent-dark);">postimages.org</a>（其中一個打不開就換另一個），上傳後複製「直接連結」（網址結尾是 .jpg 或 .png，不是相簿頁面）貼進這個欄位。
       </div>
     </div>
     ${OPT_LABELS.map(l => `<div class="opt-row"><span>${l}</span><input class="subq-opt" data-label="${l}" placeholder="選項 ${l}"><input type="radio" name="correct-${idx}" class="subq-correct" value="${l}" title="正解"></div>`).join('')}
