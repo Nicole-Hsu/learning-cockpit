@@ -829,14 +829,37 @@ function subqBlockHtml(idx) {
     <h4>小題 ${idx + 1} <button type="button" class="btn secondary small removeSubqBtn">刪除這小題</button></h4>
     <div class="field"><label>題目內容</label><textarea class="subq-content" placeholder="小題文字"></textarea></div>
     <div class="field">
-      <label>圖片網址（選填）</label>
-      <input class="subq-image" placeholder="https://...">
+      <label>圖片網址（選填，可放多張，會依序顯示）</label>
+      <div class="subq-images"></div>
+      <button type="button" class="btn secondary small addImageBtn" style="margin-top:6px;">＋ 新增一張圖片</button>
       <div style="font-size:.76rem;color:var(--text-dim);margin-top:4px;">
         怎麼放圖片：到免註冊圖床上傳，例如 <a href="https://imgbb.com" target="_blank" style="color:var(--accent-dark);">imgbb.com</a> 或 <a href="https://postimages.org" target="_blank" style="color:var(--accent-dark);">postimages.org</a>（其中一個打不開就換另一個），上傳後複製「直接連結」（網址結尾是 .jpg 或 .png，不是相簿頁面）貼進這個欄位。
       </div>
     </div>
     ${OPT_LABELS.map(l => `<div class="opt-row"><span>${l}</span><input class="subq-opt" data-label="${l}" placeholder="選項 ${l}"><input type="radio" name="correct-${idx}" class="subq-correct" value="${l}" title="正解"></div>`).join('')}
   </div>`;
+}
+
+function getImages(sq) {
+  if (sq.imageUrls && sq.imageUrls.length) return sq.imageUrls;
+  return sq.imageUrl ? [sq.imageUrl] : [];
+}
+
+function addImageRow(block, value) {
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:6px;align-items:center;margin-bottom:6px;';
+  const input = document.createElement('input');
+  input.className = 'subq-image';
+  input.placeholder = 'https://...';
+  input.value = value || '';
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.textContent = '✕';
+  del.title = '移除這張圖片';
+  del.style.cssText = 'border:1px solid var(--border);background:#fff;color:var(--danger);border-radius:8px;padding:6px 10px;cursor:pointer;';
+  del.addEventListener('click', () => row.remove());
+  row.appendChild(input); row.appendChild(del);
+  block.querySelector('.subq-images').appendChild(row);
 }
 
 function addSubqBlock(sq) {
@@ -846,9 +869,12 @@ function addSubqBlock(sq) {
   div.innerHTML = subqBlockHtml(idx);
   const block = div.firstElementChild;
   block.querySelector('.removeSubqBtn').addEventListener('click', () => block.remove());
+  block.querySelector('.addImageBtn').addEventListener('click', () => addImageRow(block, ''));
+  const existingImages = sq ? getImages(sq) : [];
+  if (existingImages.length) existingImages.forEach(u => addImageRow(block, u));
+  else addImageRow(block, '');
   if (sq) {
     block.querySelector('.subq-content').value = sq.content || '';
-    block.querySelector('.subq-image').value = sq.imageUrl || '';
     const optInputs = block.querySelectorAll('.subq-opt');
     (sq.options || []).forEach((val, i) => { if (optInputs[i]) optInputs[i].value = val; });
     if (sq.correctAnswer) {
@@ -901,13 +927,13 @@ document.getElementById('saveBankBtn').addEventListener('click', async () => {
   for (let i = 0; i < blocks.length; i++) {
     const b = blocks[i];
     const content = b.querySelector('.subq-content').value.trim();
-    const imageUrl = b.querySelector('.subq-image').value.trim();
+    const imageUrls = [...b.querySelectorAll('.subq-image')].map(inp => inp.value.trim()).filter(Boolean);
     const opts = [...b.querySelectorAll('.subq-opt')].map(o => o.value.trim());
     const correctEl = b.querySelector('.subq-correct:checked');
     if (!content) { errEl.textContent = '小題 ' + (i + 1) + ' 請填題目內容'; return; }
     if (opts.some(o => !o)) { errEl.textContent = '小題 ' + (i + 1) + ' 請填滿 A-D 四個選項'; return; }
     if (!correctEl) { errEl.textContent = '小題 ' + (i + 1) + ' 請選正解'; return; }
-    subQuestions.push({ order: i + 1, content, imageUrl: imageUrl || null, options: opts, correctAnswer: correctEl.value });
+    subQuestions.push({ order: i + 1, content, imageUrls, options: opts, correctAnswer: correctEl.value });
   }
   try {
     if (editingBankId) {
@@ -1110,7 +1136,7 @@ async function renderPublishPreview() {
       '<label style="display:flex;gap:8px;align-items:flex-start;font-weight:600;margin-bottom:6px;cursor:pointer;">' +
       '<input type="checkbox" class="subq-pick" data-order="' + sq.order + '" checked style="margin-top:4px;">' +
       '<span>小題 ' + sq.order + '：' + sq.content + '</span></label>' +
-      '<div style="padding-left:26px;">' + imgTag(sq.imageUrl) + '</div>';
+      '<div style="padding-left:26px;">' + getImages(sq).map(imgTag).join('') + '</div>';
     OPT_LABELS.forEach((l, i) => {
       html += '<div style="font-size:.88rem;padding-left:26px;' + (l === sq.correctAnswer ? 'color:var(--ok);font-weight:700;' : 'color:var(--text-mid);') + '">' +
         l + '：' + (sq.options[i] || '') + (l === sq.correctAnswer ? '（正解）' : '') + '</div>';
@@ -1316,7 +1342,7 @@ function renderVoteBoard() {
     const total = answers.length || 1;
     const counts = { A: 0, B: 0, C: 0, D: 0 };
     answers.forEach(a => { if (counts[a.selectedAnswer] !== undefined) counts[a.selectedAnswer]++; });
-    let html = '<div class="bar-q">小題 ' + sq.order + '：' + sq.content + '</div>' + imgTag(sq.imageUrl);
+    let html = '<div class="bar-q">小題 ' + sq.order + '：' + sq.content + '</div>' + getImages(sq).map(imgTag).join('');
     OPT_LABELS.forEach((l, i) => {
       const pct = Math.round((counts[l] / total) * 100);
       const isCorrect = l === sq.correctAnswer;

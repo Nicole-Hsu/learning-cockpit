@@ -327,10 +327,11 @@ function renderSubQuestions() {
       statusTag = mine ? '<span class="status-tag">已作答 ' + mine.selectedAnswer + '</span>' : '<span class="status-tag pending">尚未作答</span>';
     }
     let html = '<div class="q-title">小題 ' + sq.order + '：' + sq.content + statusTag + '</div>';
-    if (sq.imageUrl) {
-      html += '<img src="' + String(sq.imageUrl).replace(/"/g, '&quot;') + '" referrerpolicy="no-referrer" ' +
+    const images = (sq.imageUrls && sq.imageUrls.length) ? sq.imageUrls : (sq.imageUrl ? [sq.imageUrl] : []);
+    images.forEach(url => {
+      html += '<img src="' + String(url).replace(/"/g, '&quot;') + '" referrerpolicy="no-referrer" ' +
         'onerror="this.outerHTML=\'<div style=&quot;color:#d96060;font-size:.8rem;&quot;>（圖片載入失敗，請告訴老師）</div>\'">';
-    }
+    });
     card.innerHTML = html;
     OPT_LABELS.forEach((l, i) => {
       const btn = document.createElement('button');
