@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>今日小挑戰</title>
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js">
 <style>
 :root {
   --bg: #eafbfa; --card: #fff; --accent: #0ABAB5; --accent-dark: #078F8B;
@@ -97,7 +101,7 @@ button, input, select { font-family: inherit; }
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js';
 import {
-  getFirestore, doc, setDoc, getDoc, getDocs, deleteDoc, collection, query, where, orderBy, limit, onSnapshot, serverTimestamp
+  initializeFirestore, doc, setDoc, getDoc, getDocs, deleteDoc, collection, query, where, orderBy, limit, onSnapshot, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js';
 
 const firebaseConfig = {
@@ -109,7 +113,7 @@ const firebaseConfig = {
   appId: "1:648909917784:web:29281a92dd32c34656c42d"
 };
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+const db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
 
 const params = new URLSearchParams(location.search);
 const sessionId = params.get('r');
@@ -177,27 +181,35 @@ async function init() {
   if (session.status === 'ended') { showError('這堂課已經結束了。'); return; }
   classId = session.classId;
 
-  const classSnap = await getDoc(doc(db, 'classes', classId));
+  const [classSnap, rosterSnap] = await Promise.all([
+    getDoc(doc(db, 'classes', classId)),
+    getDocs(collection(db, 'classes', classId, 'students'))
+  ]);
   const classData = classSnap.data();
   document.getElementById('joinTitle').textContent = (classData ? classData.name : '') + '　加入作答';
+  rosterList = rosterSnap.docs.map(d => d.data().seatNo || d.id).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
   const savedSeat = localStorage.getItem('cr_seat_' + sessionId);
-  const rosterSnap = await getDocs(collection(db, 'classes', classId, 'students'));
-  const roster = rosterSnap.docs.map(d => d.data().seatNo || d.id).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-
-  if (savedSeat && roster.includes(savedSeat)) {
+  if (savedSeat && rosterList.includes(savedSeat)) {
     mySeat = savedSeat;
-    await markJoined();
+    joinInBackground();
     showWaitOrRun();
   } else {
     await showJoinCard();
   }
 }
 
+let rosterList = [];
+
+function joinInBackground() {
+  markJoined().catch(() => {
+    showError('座號登記失敗（網路不穩），老師可能看不到你已加入。請重新整理頁面再試一次。');
+  });
+}
+
 async function showJoinCard() {
   const sel = document.getElementById('seatSelect');
-  const rosterSnap = await getDocs(collection(db, 'classes', classId, 'students'));
-  const roster = rosterSnap.docs.map(d => d.data().seatNo || d.id).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const roster = rosterList;
 
   if (unsubJoinedList) unsubJoinedList();
   unsubJoinedList = onSnapshot(collection(db, 'sessions', sessionId, 'joined'), snap => {
@@ -241,7 +253,7 @@ document.getElementById('joinBtn').addEventListener('click', async () => {
   if (!mySeat) { document.getElementById('joinErr').textContent = '請選擇座號'; return; }
   if (unsubJoinedList) { unsubJoinedList(); unsubJoinedList = null; }
   localStorage.setItem('cr_seat_' + sessionId, mySeat);
-  await markJoined();
+  joinInBackground();
   document.getElementById('joinCard').classList.add('hidden');
   showWaitOrRun();
 });
@@ -256,11 +268,15 @@ async function showWaitOrRun() {
   document.getElementById('mySeatDisplay2').textContent = mySeat + ' 號';
   const runsRef = collection(db, 'sessions', sessionId, 'runs');
   if (unsubRun) unsubRun();
+  renderedRunKey = null;
+  respCache = {};
+  const respReady = loadAllMyResponses();
   unsubRun = onSnapshot(query(runsRef, orderBy('startedAt', 'desc'), limit(1)), async snap => {
     if (snap.empty) {
       document.getElementById('waitCard').classList.remove('hidden');
       document.getElementById('runInfoCard').classList.add('hidden');
       document.getElementById('subqArea').innerHTML = '';
+      renderedRunKey = null;
       return;
     }
     const runDoc = snap.docs[0];
@@ -270,19 +286,28 @@ async function showWaitOrRun() {
     document.getElementById('waitCard').classList.add('hidden');
     document.getElementById('runInfoCard').classList.remove('hidden');
     document.getElementById('runTitle').textContent = currentRunData.title;
-    await loadMyResponses();
+    await respReady;
+    myResponses = respCache[currentRunBankId] || (respCache[currentRunBankId] = {});
     startCountdown();
-    renderSubQuestions();
+    const startedMs = currentRunData.startedAt && currentRunData.startedAt.toMillis ? currentRunData.startedAt.toMillis() : 0;
+    const runKey = currentRunBankId + '|' + startedMs + '|' + currentBankSnapshot.subQuestions.length;
+    if (runKey === renderedRunKey) { refreshCards(); }
+    else { renderedRunKey = runKey; renderSubQuestions(); }
   });
 }
 
-async function loadMyResponses() {
-  myResponses = {};
+let renderedRunKey = null;
+let respCache = {};
+const pendingOrders = new Set();
+
+async function loadAllMyResponses() {
   const respSnap = await getDocs(query(
-    collection(db, 'sessions', sessionId, 'responses'),
-    where('bankId', '==', currentRunBankId), where('seatNo', '==', mySeat)
+    collection(db, 'sessions', sessionId, 'responses'), where('seatNo', '==', mySeat)
   ));
-  respSnap.docs.forEach(d => { myResponses[d.data().order] = d.data(); });
+  respSnap.docs.forEach(d => {
+    const r = d.data();
+    (respCache[r.bankId] = respCache[r.bankId] || {})[r.order] = r;
+  });
 }
 
 function isRunOpen() {
@@ -303,30 +328,56 @@ function startCountdown() {
     if (remain <= 0) {
       clearInterval(countdownTimer);
       document.getElementById('runCountdown').textContent = '已結束';
-      renderSubQuestions();
+      refreshCards();
     }
   }
   tick();
   countdownTimer = setInterval(tick, 1000);
 }
 
+let cardEls = {};
+
+function applyCardState(card, sq, open) {
+  const mine = myResponses[sq.order];
+  const tag = card.querySelector('.status-tag');
+  let text, cls = 'status-tag';
+  if (pendingOrders.has(sq.order)) { text = '送出中…'; cls += ' pending'; }
+  else if (!open) {
+    if (mine) { text = mine.isCorrect ? '答對了' : '答錯了，你選 ' + mine.selectedAnswer; if (!mine.isCorrect) cls += ' wrong'; }
+    else { text = '逾時未作答'; cls += ' pending'; }
+  } else if (mine) { text = '已作答 ' + mine.selectedAnswer; }
+  else { text = '尚未作答'; cls += ' pending'; }
+  tag.className = cls;
+  tag.textContent = text;
+  card.querySelectorAll('.opt-btn').forEach((btn, i) => {
+    const l = OPT_LABELS[i];
+    let c = 'opt-btn';
+    if (mine && mine.selectedAnswer === l) c += ' selected';
+    if (!open) {
+      if (l === sq.correctAnswer) c += ' correct';
+      else if (mine && mine.selectedAnswer === l) c += ' wrong';
+    }
+    btn.className = c;
+    btn.disabled = !open;
+  });
+}
+
+function refreshCards() {
+  const open = isRunOpen();
+  currentBankSnapshot.subQuestions.forEach(sq => {
+    if (cardEls[sq.order]) applyCardState(cardEls[sq.order], sq, open);
+  });
+}
+
 function renderSubQuestions() {
   const area = document.getElementById('subqArea');
   area.innerHTML = '';
+  cardEls = {};
   const open = isRunOpen();
   currentBankSnapshot.subQuestions.forEach(sq => {
     const card = document.createElement('div');
     card.className = 'subq-card';
-    const mine = myResponses[sq.order];
-    let statusTag;
-    if (!open) {
-      statusTag = mine
-        ? '<span class="status-tag ' + (mine.isCorrect ? '' : 'wrong') + '">' + (mine.isCorrect ? '答對了' : '答錯了，你選 ' + mine.selectedAnswer) + '</span>'
-        : '<span class="status-tag pending">逾時未作答</span>';
-    } else {
-      statusTag = mine ? '<span class="status-tag">已作答 ' + mine.selectedAnswer + '</span>' : '<span class="status-tag pending">尚未作答</span>';
-    }
-    let html = '<div class="q-title">小題 ' + sq.order + '：' + sq.content + statusTag + '</div>';
+    let html = '<div class="q-title">小題 ' + sq.order + '：' + sq.content + '<span class="status-tag"></span></div>';
     const images = (sq.imageUrls && sq.imageUrls.length) ? sq.imageUrls : (sq.imageUrl ? [sq.imageUrl] : []);
     images.forEach(url => {
       html += '<img src="' + String(url).replace(/"/g, '&quot;') + '" referrerpolicy="no-referrer" ' +
@@ -335,34 +386,43 @@ function renderSubQuestions() {
     card.innerHTML = html;
     OPT_LABELS.forEach((l, i) => {
       const btn = document.createElement('button');
-      let cls = 'opt-btn';
-      if (mine && mine.selectedAnswer === l) cls += ' selected';
-      if (!open) {
-        if (l === sq.correctAnswer) cls += ' correct';
-        else if (mine && mine.selectedAnswer === l) cls += ' wrong';
-      }
-      btn.className = cls;
-      btn.disabled = !open;
       btn.innerHTML = '<span class="lab">' + l + '</span>' + (sq.options[i] || '');
       btn.addEventListener('click', () => submitAnswer(sq, l));
       card.appendChild(btn);
     });
+    card.querySelectorAll('button').forEach(b => { b.className = 'opt-btn'; });
+    cardEls[sq.order] = card;
+    applyCardState(card, sq, open);
     area.appendChild(card);
   });
 }
 
-async function submitAnswer(sq, selected) {
-  if (!isRunOpen()) { renderSubQuestions(); return; }
+function submitAnswer(sq, selected) {
+  if (!isRunOpen()) { refreshCards(); return; }
   const startedAtMs = currentRunData.startedAt && currentRunData.startedAt.toMillis ? currentRunData.startedAt.toMillis() : Date.now();
   const timeUsedSeconds = Math.max(0, Math.round((Date.now() - startedAtMs) / 1000));
   const isCorrect = selected === sq.correctAnswer;
   const respId = mySeat + '_' + currentRunBankId + '_' + sq.order;
-  await setDoc(doc(db, 'sessions', sessionId, 'responses', respId), {
-    seatNo: mySeat, bankId: currentRunBankId, order: sq.order,
+  const bankId = currentRunBankId;
+  const runResponses = myResponses;
+  const previous = runResponses[sq.order];
+
+  runResponses[sq.order] = { seatNo: mySeat, bankId, order: sq.order, selectedAnswer: selected, isCorrect, timeUsedSeconds };
+  pendingOrders.add(sq.order);
+  refreshCards();
+
+  setDoc(doc(db, 'sessions', sessionId, 'responses', respId), {
+    seatNo: mySeat, bankId, order: sq.order,
     selectedAnswer: selected, isCorrect, timeUsedSeconds, answeredAt: serverTimestamp()
+  }).then(() => {
+    pendingOrders.delete(sq.order);
+    if (bankId === currentRunBankId) refreshCards();
+  }).catch(() => {
+    pendingOrders.delete(sq.order);
+    if (previous) runResponses[sq.order] = previous; else delete runResponses[sq.order];
+    if (bankId === currentRunBankId) refreshCards();
+    showError('這一題沒有送出成功（網路不穩），請再點一次答案。');
   });
-  myResponses[sq.order] = { selectedAnswer: selected, isCorrect, timeUsedSeconds };
-  renderSubQuestions();
 }
 
 init();

@@ -299,7 +299,7 @@ import {
   getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut
 } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js';
 import {
-  getFirestore, doc, setDoc, updateDoc, getDoc, getDocs, collection, query, where, orderBy, limit,
+  initializeFirestore, doc, setDoc, updateDoc, getDoc, getDocs, collection, query, where, orderBy, limit,
   writeBatch, onSnapshot, deleteDoc, serverTimestamp, Timestamp
 } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js';
 
@@ -313,7 +313,7 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
+const db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
 
 const ROOT_ADMIN_EMAIL = 'nicolehsu2004@gmail.com';
 const OPT_LABELS = ['A', 'B', 'C', 'D'];
