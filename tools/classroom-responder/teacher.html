@@ -172,7 +172,10 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
   <div class="card hidden" id="bankListCard">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
       <h2 style="margin-bottom:0;">題庫（同科別老師共用）</h2>
-      <button class="btn secondary small" id="newBankToggleBtn">＋ 新增大題</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn secondary small" id="importBankToggleBtn">匯入題目（Excel）</button>
+        <button class="btn secondary small" id="newBankToggleBtn">＋ 新增大題</button>
+      </div>
     </div>
     <div id="bankList" style="font-size:.9rem;margin-top:10px;"></div>
     <div id="trashWrap" class="hidden" style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--border);">
@@ -198,6 +201,25 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
       <button class="btn secondary" id="cancelBankBtn">取消</button>
     </div>
     <div class="err" id="bankErr"></div>
+  </div>
+
+  <div class="card hidden" id="importBankCard">
+    <h2>從 Excel 匯入題目</h2>
+    <ol style="font-size:.88rem;color:var(--text-mid);padding-left:20px;margin-bottom:12px;line-height:1.7;">
+      <li>先 <a href="#" id="downloadTemplateLink" style="color:var(--accent-dark);">下載範本</a>（用 Excel 開），照格式填題目：一列一個小題，同一個「大題標題」的列會自動歸成同一個大題。</li>
+      <li>填好後，在 Excel 選取<b>有資料的儲存格</b>（可以連標題列一起選）→ 複製（Ctrl+C）。</li>
+      <li>貼到下面的框框（Ctrl+V），按「解析預覽」，確認沒問題再按「確認匯入」。</li>
+    </ol>
+    <div style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">
+      欄位順序：大題標題｜限時(秒)｜題目｜A｜B｜C｜D｜正解(A~D)｜圖片網址(選填，多張用空格隔開)。「大題標題」「限時」只要在該大題第一列填，其餘列可以留空。
+    </div>
+    <div class="field"><textarea id="importText" style="min-height:140px;font-size:.85rem;" placeholder="在這裡貼上從 Excel 複製的內容"></textarea></div>
+    <div>
+      <button class="btn secondary" id="parseImportBtn">解析預覽</button>
+      <button class="btn hidden" id="confirmImportBtn">確認匯入</button>
+      <button class="btn secondary" id="cancelImportBtn">取消</button>
+    </div>
+    <div id="importPreview" style="margin-top:14px;font-size:.9rem;"></div>
   </div>
 
   <div class="card hidden" id="sessionCard">
@@ -270,6 +292,7 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
 </div>
 
 <script type="module">
+import { parseTSV, buildImportBanks } from './import-parser.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js';
 import {
   getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut
@@ -623,6 +646,7 @@ document.getElementById('backToClassBtn').addEventListener('click', () => {
   document.getElementById('rosterCard').classList.add('hidden');
   document.getElementById('bankListCard').classList.add('hidden');
   document.getElementById('newBankCard').classList.add('hidden');
+  document.getElementById('importBankCard').classList.add('hidden');
   document.getElementById('sessionCard').classList.add('hidden');
   document.getElementById('sessionInfoArea').classList.add('hidden');
   document.getElementById('runCard').classList.add('hidden');
@@ -889,6 +913,7 @@ let editingBankId = null;
 
 document.getElementById('newBankToggleBtn').addEventListener('click', () => {
   editingBankId = null;
+  document.getElementById('importBankCard').classList.add('hidden');
   document.getElementById('bankFormTitle').textContent = '新增大題';
   document.getElementById('bankTitle').value = '';
   document.getElementById('bankTimeLimit').value = 300;
@@ -950,6 +975,107 @@ document.getElementById('saveBankBtn').addEventListener('click', async () => {
     await loadBankList();
     await loadPublishSelect();
   } catch (e) { errEl.textContent = e.message; }
+});
+
+// ---------- 從 Excel 匯入題目 ----------
+
+let pendingImport = null;
+
+function resetImportCard() {
+  pendingImport = null;
+  document.getElementById('importText').value = '';
+  document.getElementById('importPreview').innerHTML = '';
+  document.getElementById('confirmImportBtn').classList.add('hidden');
+}
+
+document.getElementById('importBankToggleBtn').addEventListener('click', () => {
+  document.getElementById('newBankCard').classList.add('hidden');
+  resetImportCard();
+  document.getElementById('importBankCard').classList.remove('hidden');
+  document.getElementById('importBankCard').scrollIntoView({ behavior: 'smooth' });
+});
+
+document.getElementById('cancelImportBtn').addEventListener('click', () => {
+  resetImportCard();
+  document.getElementById('importBankCard').classList.add('hidden');
+});
+
+document.getElementById('downloadTemplateLink').addEventListener('click', e => {
+  e.preventDefault();
+  const rows = [
+    ['大題標題', '限時(秒)', '題目', 'A', 'B', 'C', 'D', '正解(A~D)', '圖片網址(選填，多張用空格隔開)'],
+    ['地層構造與岩石', '180', '地球內部由外而內依序是？', '地殼→地函→地核', '地核→地函→地殼', '地函→地殼→地核', '地殼→地核→地函', 'A', ''],
+    ['', '', '下列哪一種是火成岩？', '花岡岩', '石灰岩', '頁岩', '大理岩', 'A', ''],
+    ['天氣與氣候', '120', '台灣夏季最常見的劇烈天氣是？', '颱風', '寒流', '沙塵暴', '龍捲風', 'A', 'https://i.postimg.cc/xxxxxxx/example.jpg']
+  ];
+  const csv = '﻿' + rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+  a.download = '今日小挑戰_題庫匯入範本.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+});
+
+document.getElementById('parseImportBtn').addEventListener('click', () => {
+  const preview = document.getElementById('importPreview');
+  const confirmBtn = document.getElementById('confirmImportBtn');
+  const text = document.getElementById('importText').value;
+  pendingImport = null;
+  confirmBtn.classList.add('hidden');
+  if (!text.trim()) { preview.innerHTML = '<span style="color:var(--danger);">請先貼上從 Excel 複製的內容</span>'; return; }
+  const { banks, errors } = buildImportBanks(parseTSV(text));
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  let html = '';
+  if (errors.length) {
+    html += '<div style="color:var(--danger);margin-bottom:10px;"><b>有 ' + errors.length + ' 個問題，請修正 Excel 後重新複製貼上：</b><ul style="padding-left:20px;margin-top:4px;">' +
+      errors.map(m => '<li>' + esc(m) + '</li>').join('') + '</ul></div>';
+  }
+  if (banks.length) {
+    const existing = new Set(Object.values(publishBankCache).map(b => b.title));
+    html += '<div style="margin-bottom:6px;"><b>解析到 ' + banks.length + ' 個大題（共 ' + banks.reduce((n, b) => n + b.subQuestions.length, 0) + ' 個小題）：</b></div>';
+    banks.forEach(b => {
+      html += '<div class="subq-block" style="margin-bottom:8px;"><div style="font-weight:600;">' + esc(b.title) +
+        '<span style="color:var(--text-dim);font-weight:400;">　限時 ' + b.timeLimitSeconds + ' 秒，' + b.subQuestions.length + ' 小題</span>' +
+        (existing.has(b.title) ? '<span style="color:#8a6d1a;">　⚠️ 這個科別已經有同名題庫，匯入後會多一份</span>' : '') + '</div>' +
+        '<ol style="padding-left:20px;font-size:.85rem;color:var(--text-mid);margin-top:4px;">' +
+        b.subQuestions.map(s => '<li>' + esc(s.content.length > 40 ? s.content.slice(0, 40) + '…' : s.content) + '（正解 ' + s.correctAnswer + (s.imageUrls.length ? '，' + s.imageUrls.length + ' 張圖' : '') + '）</li>').join('') +
+        '</ol></div>';
+    });
+    if (!errors.length) {
+      pendingImport = banks;
+      confirmBtn.classList.remove('hidden');
+    } else {
+      html += '<div style="color:var(--text-mid);font-size:.85rem;">為了避免漏題，有問題時不能匯入；修正後再貼一次即可。</div>';
+    }
+  } else if (!errors.length) {
+    html += '<span style="color:var(--danger);">沒有解析到任何題目，請確認是直接從 Excel 選取儲存格複製的。</span>';
+  }
+  preview.innerHTML = html;
+});
+
+document.getElementById('confirmImportBtn').addEventListener('click', async () => {
+  if (!pendingImport) return;
+  const preview = document.getElementById('importPreview');
+  const confirmBtn = document.getElementById('confirmImportBtn');
+  confirmBtn.disabled = true;
+  try {
+    const batch = writeBatch(db);
+    pendingImport.forEach(b => {
+      batch.set(doc(collection(db, 'questionBanks')), {
+        subject: classData.subject, title: b.title, timeLimitSeconds: b.timeLimitSeconds, subQuestions: b.subQuestions,
+        createdBy: myUid, createdByEmail: myEmail, createdAt: serverTimestamp()
+      });
+    });
+    await batch.commit();
+    const n = pendingImport.length;
+    resetImportCard();
+    document.getElementById('importBankCard').classList.add('hidden');
+    await loadBankList();
+    await loadPublishSelect();
+    alert('已匯入 ' + n + ' 個大題到「' + classData.subject + '」科別的題庫。');
+  } catch (e) {
+    preview.innerHTML += '<div style="color:var(--danger);margin-top:8px;">匯入失敗：' + e.message + '</div>';
+  }
+  confirmBtn.disabled = false;
 });
 
 function renderTrash(trashDocs) {
