@@ -171,7 +171,7 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
 
   <div class="card hidden" id="bankListCard">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-      <h2 style="margin-bottom:0;">題庫（同科別老師共用）</h2>
+      <h2 style="margin-bottom:0;">單元題庫（同科別老師共用）</h2>
       <div style="display:flex;gap:8px;">
         <button class="btn secondary small" id="exportBanksBtn">匯出題庫（Excel）</button>
         <button class="btn secondary small" id="importBankToggleBtn">匯入題目（Excel）</button>
@@ -1161,7 +1161,7 @@ async function loadBankList() {
   renderTrash(snap.docs.filter(d => d.data().deleted).sort(byTitle));
   const activeDocs = snap.docs.filter(d => !d.data().deleted);
   if (!activeDocs.length) {
-    listEl.innerHTML = '<p style="color:var(--text-mid);">這個科別還沒有題庫，按上面「新增大題」開始第一個。</p>';
+    listEl.innerHTML = '<p style="color:var(--text-mid);">這個科別還沒有單元題庫，按上面「新增大題」開始第一個。</p>';
     return;
   }
   const docs = activeDocs.sort(byTitle);
