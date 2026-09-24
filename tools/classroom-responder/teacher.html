@@ -170,6 +170,7 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
       <label>選一個大題發布</label>
       <select id="publishBankSelect"></select>
     </div>
+    <div id="publishPreview" style="margin-bottom:16px;"></div>
     <button class="btn" id="publishBtn">發布這個大題</button>
     <div class="err" id="publishErr"></div>
     <div id="sessionInfoArea" class="hidden" style="margin-top:18px;padding-top:18px;border-top:1px solid var(--border);">
@@ -637,20 +638,46 @@ async function loadBankList() {
   });
 }
 
+let publishBankCache = {};
+
 async function loadPublishSelect() {
   const sel = document.getElementById('publishBankSelect');
   sel.innerHTML = '';
+  publishBankCache = {};
   const snap = await getDocs(query(collection(db, 'questionBanks'), where('subject', '==', classData.subject)));
   if (snap.empty) {
     sel.innerHTML = '<option value="">（尚無題庫）</option>';
+    document.getElementById('publishPreview').innerHTML = '';
     return;
   }
   snap.forEach(d => {
+    publishBankCache[d.id] = d.data();
     const opt = document.createElement('option');
     opt.value = d.id; opt.textContent = d.data().title;
     sel.appendChild(opt);
   });
+  renderPublishPreview();
 }
+
+function renderPublishPreview() {
+  const preview = document.getElementById('publishPreview');
+  const bankId = document.getElementById('publishBankSelect').value;
+  const bank = publishBankCache[bankId];
+  if (!bank) { preview.innerHTML = ''; return; }
+  let html = '<div style="font-size:.8rem;color:var(--text-mid);margin-bottom:8px;">限時 ' + bank.timeLimitSeconds + ' 秒，共 ' + bank.subQuestions.length + ' 小題——發布前先確認內容：</div>';
+  bank.subQuestions.forEach(sq => {
+    html += '<div class="subq-block" style="margin-bottom:10px;">' +
+      '<div style="font-weight:600;margin-bottom:6px;">小題 ' + sq.order + '：' + sq.content + '</div>';
+    OPT_LABELS.forEach((l, i) => {
+      html += '<div style="font-size:.88rem;' + (l === sq.correctAnswer ? 'color:var(--ok);font-weight:700;' : 'color:var(--text-mid);') + '">' +
+        l + '：' + (sq.options[i] || '') + (l === sq.correctAnswer ? '（正解）' : '') + '</div>';
+    });
+    html += '</div>';
+  });
+  preview.innerHTML = html;
+}
+
+document.getElementById('publishBankSelect').addEventListener('change', renderPublishPreview);
 
 // ---------- Session / Run ----------
 
