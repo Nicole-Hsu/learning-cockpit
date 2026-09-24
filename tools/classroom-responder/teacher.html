@@ -117,7 +117,7 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
     <div id="editClassArea" class="hidden" style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px;">
       <div style="font-size:.82rem;font-weight:600;color:var(--text-mid);margin-bottom:8px;">改這個班級的名稱／科別（打錯字可以在這裡改，不用整個刪掉重建）</div>
       <div class="field"><label>班級名稱</label><input id="editClassName"></div>
-      <div class="field"><label>學年度</label><input id="editClassYear" style="max-width:160px;"></div>
+      <div class="field"><label>學年度</label><input id="editClassYear" placeholder="例如：114-1" style="max-width:160px;"></div>
       <div class="field"><label>科別</label><input id="editClassSubject" list="subjectOptions"></div>
       <button class="btn secondary" id="saveClassEditBtn">儲存修改</button>
       <div class="err" id="editClassErr"></div>
