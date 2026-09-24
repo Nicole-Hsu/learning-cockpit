@@ -615,7 +615,24 @@ async function loadBankList() {
     const data = d.data();
     const row = document.createElement('div');
     row.className = 'list-row';
-    row.innerHTML = '<span>' + data.title + '　<span style="color:var(--text-dim);">（' + data.subQuestions.length + ' 小題，限時 ' + data.timeLimitSeconds + ' 秒，' + (data.createdByEmail || '') + '）</span></span>';
+    const info = document.createElement('span');
+    info.innerHTML = data.title + '　<span style="color:var(--text-dim);">（' + data.subQuestions.length + ' 小題，限時 <span class="tl-' + d.id + '">' + data.timeLimitSeconds + '</span> 秒，' + (data.createdByEmail || '') + '）</span>';
+    row.appendChild(info);
+    if (isRoot || data.createdBy === myUid) {
+      const editBtn = document.createElement('button');
+      editBtn.className = 'btn secondary small';
+      editBtn.textContent = '改限時';
+      editBtn.addEventListener('click', async () => {
+        const input = prompt('這個大題的限時要改成幾秒？（只會影響之後新發布的場次，正在進行或已經結束的不會被改動）', data.timeLimitSeconds);
+        if (!input) return;
+        const val = parseInt(input, 10);
+        if (!val || val < 10) { alert('請輸入至少 10 的整數秒數'); return; }
+        await updateDoc(doc(db, 'questionBanks', d.id), { timeLimitSeconds: val });
+        data.timeLimitSeconds = val;
+        row.querySelector('.tl-' + d.id).textContent = val;
+      });
+      row.appendChild(editBtn);
+    }
     listEl.appendChild(row);
   });
 }
