@@ -672,6 +672,20 @@ async function loadBankList() {
       editContentBtn.textContent = '編輯內容';
       editContentBtn.addEventListener('click', () => openBankForEdit(d.id, data));
       row.appendChild(editContentBtn);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'btn secondary small';
+      deleteBtn.style.color = 'var(--danger)';
+      deleteBtn.textContent = '刪除題庫';
+      deleteBtn.addEventListener('click', async () => {
+        if (!confirm('確定要刪除「' + data.title + '」這份題庫嗎？已經發布過的場次紀錄不會受影響，但刪掉之後所有用這份題庫的老師都選不到它了，不能復原。')) return;
+        try {
+          await deleteDoc(doc(db, 'questionBanks', d.id));
+          await loadBankList();
+          await loadPublishSelect();
+        } catch (e) { alert('刪除失敗：' + e.message); }
+      });
+      row.appendChild(deleteBtn);
     }
     listEl.appendChild(row);
   });
