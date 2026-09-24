@@ -53,6 +53,15 @@ button, input, select { font-family: inherit; }
     <p id="errMsg" style="color:var(--danger);"></p>
   </div>
 
+  <div class="card hidden" id="lbCard" style="border:2px solid var(--accent);">
+    <h2 style="color:var(--accent-dark);">🏆 排行榜（老師已公布）</h2>
+    <div id="lbMine" style="font-weight:700;margin-bottom:10px;"></div>
+    <table id="lbTable" style="width:100%;border-collapse:collapse;font-size:.9rem;">
+      <thead><tr style="color:var(--text-mid);font-size:.78rem;text-align:left;"><th style="padding:4px;">名次</th><th style="padding:4px;">座號</th><th style="padding:4px;">答對</th><th style="padding:4px;">總耗時</th></tr></thead>
+      <tbody id="lbBody"></tbody>
+    </table>
+  </div>
+
   <div class="card hidden" id="joinCard">
     <h2 id="joinTitle">加入作答</h2>
     <div class="field">
@@ -108,7 +117,51 @@ const OPT_LABELS = ['A', 'B', 'C', 'D'];
 
 let classId = null, mySeat = null;
 let currentRunBankId = null, currentRunData = null, currentBankSnapshot = null;
-let countdownTimer = null, unsubRun = null, unsubJoinedList = null;
+let countdownTimer = null, unsubRun = null, unsubJoinedList = null, unsubSession = null;
+
+function fmtTime(sec) {
+  sec = sec || 0;
+  return sec >= 60 ? Math.floor(sec / 60) + ' 分 ' + (sec % 60) + ' 秒' : sec + ' 秒';
+}
+
+function renderLeaderboardCard(lb) {
+  const card = document.getElementById('lbCard');
+  if (!lb || !lb.rows || !lb.rows.length || !mySeat) { card.classList.add('hidden'); return; }
+  const rows = lb.rows;
+  const myIdx = rows.findIndex(r => String(r.seatNo) === String(mySeat));
+  const mine = document.getElementById('lbMine');
+  mine.textContent = myIdx >= 0
+    ? '你是第 ' + (myIdx + 1) + ' 名（共 ' + rows.length + ' 人）：答對 ' + rows[myIdx].correctCount + ' 題，總耗時 ' + fmtTime(rows[myIdx].totalTime)
+    : '你這次沒有作答紀錄，不在排名內';
+  const body = document.getElementById('lbBody');
+  body.innerHTML = '';
+  const addRow = (r, rank, isMe) => {
+    const tr = document.createElement('tr');
+    tr.style.cssText = 'border-top:1px solid var(--border);' + (isMe ? 'background:#d9f6f4;font-weight:700;' : '');
+    [rank, r.seatNo + ' 號', r.correctCount + ' / ' + r.totalSubQs, fmtTime(r.totalTime)].forEach(v => {
+      const td = document.createElement('td');
+      td.style.padding = '6px 4px';
+      td.textContent = v;
+      tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  };
+  rows.slice(0, 10).forEach((r, i) => addRow(r, i + 1, i === myIdx));
+  if (myIdx >= 10) {
+    const gap = document.createElement('tr');
+    gap.innerHTML = '<td colspan="4" style="text-align:center;color:var(--text-dim);padding:2px;">…</td>';
+    body.appendChild(gap);
+    addRow(rows[myIdx], myIdx + 1, true);
+  }
+  card.classList.remove('hidden');
+}
+
+function watchSessionLeaderboard() {
+  if (unsubSession) unsubSession();
+  unsubSession = onSnapshot(doc(db, 'sessions', sessionId), snap => {
+    renderLeaderboardCard(snap.exists() ? snap.data().leaderboard : null);
+  });
+}
 let myResponses = {};
 
 function showError(msg) {
@@ -170,6 +223,8 @@ async function resetSeatAndRejoin() {
     try { await deleteDoc(doc(db, 'sessions', sessionId, 'joined', mySeat)); } catch (e) { /* 忽略，反正本機也已經清掉了 */ }
   }
   mySeat = null;
+  if (unsubSession) { unsubSession(); unsubSession = null; }
+  document.getElementById('lbCard').classList.add('hidden');
   if (unsubRun) { unsubRun(); unsubRun = null; }
   document.getElementById('waitCard').classList.add('hidden');
   document.getElementById('runInfoCard').classList.add('hidden');
@@ -196,6 +251,7 @@ async function markJoined() {
 }
 
 async function showWaitOrRun() {
+  watchSessionLeaderboard();
   document.getElementById('mySeatDisplay').textContent = mySeat + ' 號';
   document.getElementById('mySeatDisplay2').textContent = mySeat + ' 號';
   const runsRef = collection(db, 'sessions', sessionId, 'runs');

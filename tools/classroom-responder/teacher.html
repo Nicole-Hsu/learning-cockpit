@@ -251,6 +251,12 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
       <h2 style="margin-bottom:0;">排行榜</h2>
       <button class="btn secondary small" id="recalcLeaderboardBtn">重新計算</button>
     </div>
+    <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <button class="btn small" id="publishLeaderboardBtn">公布給學生</button>
+      <button class="btn secondary small hidden" id="unpublishLeaderboardBtn">取消公布</button>
+      <span id="lbPublishStatus" style="font-size:.82rem;color:var(--text-mid);"></span>
+    </div>
+    <div style="font-size:.76rem;color:var(--text-dim);margin-top:6px;">公布的是按下當下的排名快照（只含有作答的座號）；學生會看到前 10 名跟自己的名次，之後想更新請再按一次「公布給學生」。</div>
     <table class="lb" id="lbTable" style="margin-top:12px;">
       <thead><tr><th>名次</th><th>座號</th><th>答對</th><th>作答數</th><th>總耗時</th></tr></thead>
       <tbody id="lbBody"></tbody>
@@ -1326,10 +1332,37 @@ async function renderLeaderboard() {
   }
 }
 
+async function refreshPublishStatus() {
+  const statusEl = document.getElementById('lbPublishStatus');
+  const snap = await getDoc(doc(db, 'sessions', sessionId));
+  const lb = snap.exists() ? snap.data().leaderboard : null;
+  document.getElementById('unpublishLeaderboardBtn').classList.toggle('hidden', !lb);
+  document.getElementById('publishLeaderboardBtn').textContent = lb ? '重新公布（更新）' : '公布給學生';
+  statusEl.textContent = lb ? '目前已公布給學生（' + lb.rows.length + ' 人）' : '尚未公布';
+}
+
+document.getElementById('publishLeaderboardBtn').addEventListener('click', async () => {
+  const statusEl = document.getElementById('lbPublishStatus');
+  statusEl.textContent = '公布中…';
+  try {
+    const rows = (await computeLeaderboard()).filter(r => r.answeredCount > 0);
+    if (!rows.length) { statusEl.textContent = '還沒有人作答，沒有東西可以公布'; return; }
+    await updateDoc(doc(db, 'sessions', sessionId), { leaderboard: { publishedAt: serverTimestamp(), rows } });
+    await refreshPublishStatus();
+  } catch (e) { statusEl.textContent = '公布失敗：' + e.message; }
+});
+
+document.getElementById('unpublishLeaderboardBtn').addEventListener('click', async () => {
+  if (!confirm('確定要取消公布嗎？學生畫面上的排行榜會消失。')) return;
+  await updateDoc(doc(db, 'sessions', sessionId), { leaderboard: null });
+  await refreshPublishStatus();
+});
+
 function openLeaderboard() {
   document.getElementById('leaderboardCard').classList.remove('hidden');
   document.getElementById('leaderboardCard').scrollIntoView({ behavior: 'smooth' });
   renderLeaderboard();
+  refreshPublishStatus();
 }
 document.getElementById('showLeaderboardBtn').addEventListener('click', openLeaderboard);
 document.getElementById('showLeaderboardBtnEnded').addEventListener('click', openLeaderboard);
