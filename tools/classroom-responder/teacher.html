@@ -1593,7 +1593,7 @@ async function renderLeaderboard() {
     }
     rows.forEach((r, i) => {
       const tr = document.createElement('tr');
-      tr.innerHTML = '<td>' + (i + 1) + '</td><td>' + r.seatNo + ' 號</td><td>' + r.correctCount + '</td>' +
+      tr.innerHTML = '<td>' + (i + 1) + '</td><td>' + r.seatNo + '</td><td>' + r.correctCount + '</td>' +
         '<td>' + r.answeredCount + ' / ' + r.totalSubQs + '</td><td>' + r.totalTime + ' 秒</td>';
       body.appendChild(tr);
     });
