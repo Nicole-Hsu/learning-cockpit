@@ -8,7 +8,7 @@
   "auth": {
     "providers": {
       "googleSignIn": {
-        "oAuthBrandDisplayName": "課堂應答器",
+        "oAuthBrandDisplayName": "今日小挑戰",
         "supportEmail": "nicolehsu2004@gmail.com"
       }
     }
