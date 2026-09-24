@@ -67,9 +67,11 @@ button, input, select { font-family: inherit; }
   <div class="card hidden" id="waitCard">
     <h2>等待老師發布題目…</h2>
     <p style="font-size:.85rem;color:var(--text-mid);">目前座號：<b id="mySeatDisplay"></b>（頁面會自動更新，不用重新整理）</p>
+    <p style="margin-top:10px;"><a href="#" id="notMeLink" style="font-size:.82rem;color:var(--text-dim);">不是我，換座號</a></p>
   </div>
 
   <div class="card hidden" id="runInfoCard">
+    <p style="font-size:.78rem;text-align:right;margin-bottom:-6px;"><a href="#" id="notMeLink2" style="color:var(--text-dim);">座號選錯了？換座號</a></p>
     <div style="display:flex;justify-content:space-between;align-items:center;">
       <h2 id="runTitle" style="margin-bottom:0;"></h2>
       <span class="countdown" id="runCountdown">--:--</span>
@@ -132,19 +134,39 @@ async function init() {
     await markJoined();
     showWaitOrRun();
   } else {
-    const sel = document.getElementById('seatSelect');
-    const joinedSnap = await getDocs(collection(db, 'sessions', sessionId, 'joined'));
-    const joinedSet = new Set(joinedSnap.docs.map(d => d.id));
-    roster.forEach(seatNo => {
-      const opt = document.createElement('option');
-      opt.value = seatNo;
-      opt.textContent = seatNo + ' 號' + (joinedSet.has(seatNo) ? '（已有人加入）' : '');
-      sel.appendChild(opt);
-    });
-    document.getElementById('seatHint').textContent = '如果看到「已有人加入」但不是你本人在用，請告訴老師。';
-    document.getElementById('joinCard').classList.remove('hidden');
+    await showJoinCard();
   }
 }
+
+async function showJoinCard() {
+  const sel = document.getElementById('seatSelect');
+  sel.innerHTML = '';
+  const rosterSnap = await getDocs(collection(db, 'classes', classId, 'students'));
+  const roster = rosterSnap.docs.map(d => d.data().seatNo || d.id).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const joinedSnap = await getDocs(collection(db, 'sessions', sessionId, 'joined'));
+  const joinedSet = new Set(joinedSnap.docs.map(d => d.id));
+  roster.forEach(seatNo => {
+    const opt = document.createElement('option');
+    opt.value = seatNo;
+    opt.textContent = seatNo + ' 號' + (joinedSet.has(seatNo) ? '（已有人加入）' : '');
+    sel.appendChild(opt);
+  });
+  document.getElementById('seatHint').textContent = '如果看到「已有人加入」但不是你本人在用，請告訴老師。';
+  document.getElementById('joinCard').classList.remove('hidden');
+}
+
+async function resetSeatAndRejoin() {
+  localStorage.removeItem('cr_seat_' + sessionId);
+  mySeat = null;
+  if (unsubRun) { unsubRun(); unsubRun = null; }
+  document.getElementById('waitCard').classList.add('hidden');
+  document.getElementById('runInfoCard').classList.add('hidden');
+  document.getElementById('subqArea').innerHTML = '';
+  await showJoinCard();
+}
+
+document.getElementById('notMeLink').addEventListener('click', e => { e.preventDefault(); resetSeatAndRejoin(); });
+document.getElementById('notMeLink2').addEventListener('click', e => { e.preventDefault(); resetSeatAndRejoin(); });
 
 document.getElementById('joinBtn').addEventListener('click', async () => {
   const sel = document.getElementById('seatSelect');
