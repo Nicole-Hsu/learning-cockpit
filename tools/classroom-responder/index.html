@@ -276,7 +276,8 @@ async function showWaitOrRun() {
   renderedRunKey = null;
   respCache = {};
   const respReady = loadAllMyResponses();
-  unsubRun = onSnapshot(query(runsRef, orderBy('startedAt', 'desc'), limit(1)), async snap => {
+  respReady.then(() => refreshCards());
+  unsubRun = onSnapshot(query(runsRef, orderBy('startedAt', 'desc'), limit(1)), snap => {
     if (snap.empty) {
       document.getElementById('waitCard').classList.remove('hidden');
       document.getElementById('runInfoCard').classList.add('hidden');
@@ -291,7 +292,6 @@ async function showWaitOrRun() {
     document.getElementById('waitCard').classList.add('hidden');
     document.getElementById('runInfoCard').classList.remove('hidden');
     document.getElementById('runTitle').textContent = currentRunData.title;
-    await respReady;
     myResponses = respCache[currentRunBankId] || (respCache[currentRunBankId] = {});
     startCountdown();
     const startedMs = currentRunData.startedAt && currentRunData.startedAt.toMillis ? currentRunData.startedAt.toMillis() : 0;

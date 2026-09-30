@@ -1599,21 +1599,22 @@ document.getElementById('startNewSessionBtn').addEventListener('click', () => {
 // ---------- 排行榜 ----------
 
 async function computeLeaderboard() {
-  const rosterSnap = await getDocs(collection(db, 'classes', classId, 'students'));
-  const roster = rosterSnap.docs.map(d => d.data().seatNo || d.id);
+  const joinedSnap = await getDocs(collection(db, 'sessions', sessionId, 'joined'));
+  const joinedSeats = joinedSnap.docs.map(d => d.id);
   const runsSnap = await getDocs(collection(db, 'sessions', sessionId, 'runs'));
   const runs = runsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   const totalSubQs = runs.reduce((sum, r) => sum + (r.subQuestions ? r.subQuestions.length : 0), 0);
   const respSnap = await getDocs(collection(db, 'sessions', sessionId, 'responses'));
   const responses = respSnap.docs.map(d => d.data());
 
-  const rows = roster.map(seatNo => {
+  const rows = joinedSeats.map(seatNo => {
     const mine = responses.filter(r => r.seatNo === seatNo);
     const correctCount = mine.filter(r => r.isCorrect).length;
     const totalTime = mine.reduce((s, r) => s + (r.timeUsedSeconds || 0), 0);
     return { seatNo, correctCount, answeredCount: mine.length, totalSubQs, totalTime };
   });
-  rows.sort((a, b) => b.correctCount - a.correctCount || a.totalTime - b.totalTime);
+  rows.sort((a, b) => b.correctCount - a.correctCount || a.totalTime - b.totalTime ||
+    a.seatNo.localeCompare(b.seatNo, undefined, { numeric: true }));
   return rows;
 }
 
