@@ -212,7 +212,7 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
       <li>貼到下面的框框（Ctrl+V），按「解析預覽」，確認沒問題再按「確認匯入」。</li>
     </ol>
     <div style="font-size:.78rem;color:var(--text-dim);margin-bottom:8px;">
-      欄位順序：單元｜限時(秒)｜題目｜A｜B｜C｜D｜正解(A~D)。「單元」「限時」只要在該單元第一列填，其餘列可以留空。圖片請匯入後再到題庫「編輯內容」裡加。
+      欄位順序：單元｜限時(秒)｜題目｜A｜B｜C｜D｜正解(A~D)｜分類。「單元」「限時」只要在該單元第一列填，其餘列可以留空。「分類」每一列都要填，只能是 <b>Knowledge</b>、<b>Application</b> 或 <b>Clinical Judgment</b> 其中一個（大小寫不拘）。圖片請匯入後再到題庫「編輯內容」裡加。
     </div>
     <div class="field"><textarea id="importText" style="min-height:140px;font-size:.85rem;" placeholder="在這裡貼上從 Excel 複製的內容"></textarea></div>
     <div>
@@ -857,6 +857,15 @@ function subqBlockHtml(idx) {
     <h4>小題 ${idx + 1} <button type="button" class="btn secondary small removeSubqBtn">刪除這小題</button></h4>
     <div class="field"><label>題目內容</label><textarea class="subq-content" placeholder="小題文字"></textarea></div>
     <div class="field">
+      <label>分類</label>
+      <select class="subq-category">
+        <option value="">— 請選擇分類 —</option>
+        <option value="Knowledge">Knowledge</option>
+        <option value="Application">Application</option>
+        <option value="Clinical Judgment">Clinical Judgment</option>
+      </select>
+    </div>
+    <div class="field">
       <label>圖片網址（選填，可放多張，會依序顯示）</label>
       <div class="subq-images"></div>
       <button type="button" class="btn secondary small addImageBtn" style="margin-top:6px;">＋ 新增一張圖片</button>
@@ -903,6 +912,7 @@ function addSubqBlock(sq) {
   else addImageRow(block, '');
   if (sq) {
     block.querySelector('.subq-content').value = sq.content || '';
+    block.querySelector('.subq-category').value = sq.category || '';
     const optInputs = block.querySelectorAll('.subq-opt');
     (sq.options || []).forEach((val, i) => { if (optInputs[i]) optInputs[i].value = val; });
     if (sq.correctAnswer) {
@@ -956,13 +966,15 @@ document.getElementById('saveBankBtn').addEventListener('click', async () => {
   for (let i = 0; i < blocks.length; i++) {
     const b = blocks[i];
     const content = b.querySelector('.subq-content').value.trim();
+    const category = b.querySelector('.subq-category').value;
     const imageUrls = [...b.querySelectorAll('.subq-image')].map(inp => inp.value.trim()).filter(Boolean);
     const opts = [...b.querySelectorAll('.subq-opt')].map(o => o.value.trim());
     const correctEl = b.querySelector('.subq-correct:checked');
     if (!content) { errEl.textContent = '小題 ' + (i + 1) + ' 請填題目內容'; return; }
+    if (!category) { errEl.textContent = '小題 ' + (i + 1) + ' 請選分類（Knowledge/Application/Clinical Judgment）'; return; }
     if (opts.some(o => !o)) { errEl.textContent = '小題 ' + (i + 1) + ' 請填滿 A-D 四個選項'; return; }
     if (!correctEl) { errEl.textContent = '小題 ' + (i + 1) + ' 請選正解'; return; }
-    subQuestions.push({ order: i + 1, content, imageUrls, options: opts, correctAnswer: correctEl.value });
+    subQuestions.push({ order: i + 1, content, category, imageUrls, options: opts, correctAnswer: correctEl.value });
   }
   try {
     const holderId = (await fetchActiveTitleMap()).get(titleKey(title));
@@ -1032,11 +1044,11 @@ document.getElementById('cancelImportBtn').addEventListener('click', () => {
 document.getElementById('downloadTemplateLink').addEventListener('click', e => {
   e.preventDefault();
   const rows = [
-    ['單元', '限時(秒)', '題目', 'A', 'B', 'C', 'D', '正解(A~D)'],
-    ['生命徵象與評估', '120', '正常成人的呼吸速率範圍（次/分）是？', '12-20', '30-40', '4-8', '60-100', 'A'],
-    ['', '', '測量血壓時，聽診器應放置於？', '肱動脈（肘窩處）', '橈動脈', '頸動脈', '足背動脈', 'A'],
-    ['感染管制與給藥安全', '120', '執行侵入性治療前，最基本且最重要的感染管制措施是？', '落實手部衛生（洗手）', '戴口罩', '戴手套', '用酒精消毒床單', 'A'],
-    ['', '', '給藥安全「五對」原則中，不包含下列哪一項？', '對家屬', '對病人', '對藥物', '對劑量', 'A']
+    ['單元', '限時(秒)', '題目', 'A', 'B', 'C', 'D', '正解(A~D)', '分類(Knowledge/Application/Clinical Judgment)'],
+    ['生命徵象與評估', '120', '正常成人的呼吸速率範圍（次/分）是？', '12-20', '30-40', '4-8', '60-100', 'A', 'Knowledge'],
+    ['', '', '測量血壓時，聽診器應放置於？', '肱動脈（肘窩處）', '橈動脈', '頸動脈', '足背動脈', 'A', 'Application'],
+    ['感染管制與給藥安全', '120', '執行侵入性治療前，最基本且最重要的感染管制措施是？', '落實手部衛生（洗手）', '戴口罩', '戴手套', '用酒精消毒床單', 'A', 'Application'],
+    ['', '', '病人表示對某抗生素曾經過敏，護理師發現醫囑開立同類藥物時，應優先採取的行動是？', '暫緩給藥並立即通知醫師確認', '依醫囑照常給藥', '請家屬簽署自願書後給藥', '把藥物劑量減半給藥', 'A', 'Clinical Judgment']
   ];
   const csv = '﻿' + rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\r\n');
   const a = document.createElement('a');
@@ -1085,7 +1097,7 @@ document.getElementById('parseImportBtn').addEventListener('click', async () => 
         '<span style="color:var(--text-dim);font-weight:400;">　限時 ' + b.timeLimitSeconds + ' 秒，' + b.subQuestions.length + ' 小題</span>' +
         (existing.has(titleKey(b.title)) ? '<span style="color:var(--danger);">　❌ 同名題庫已存在</span>' : '') + '</div>' +
         '<ol style="padding-left:20px;font-size:.85rem;color:var(--text-mid);margin-top:4px;">' +
-        b.subQuestions.map(s => '<li>' + esc(s.content.length > 40 ? s.content.slice(0, 40) + '…' : s.content) + '（正解 ' + s.correctAnswer + (s.imageUrls.length ? '，' + s.imageUrls.length + ' 張圖' : '') + '）</li>').join('') +
+        b.subQuestions.map(s => '<li>' + esc(s.content.length > 40 ? s.content.slice(0, 40) + '…' : s.content) + '（正解 ' + s.correctAnswer + '，' + s.category + (s.imageUrls.length ? '，' + s.imageUrls.length + ' 張圖' : '') + '）</li>').join('') +
         '</ol></div>';
     });
     if (!errors.length) {
@@ -1298,6 +1310,12 @@ async function loadPublishSelect() {
   applyBankSearchFilter();
 }
 
+function categoryTag(sq) {
+  const c = sq.category;
+  return '<span style="display:inline-block;font-size:.72rem;padding:2px 8px;border-radius:999px;background:#e3dbf9;color:#5c419e;margin-left:8px;">' +
+    (c || '未分類') + '</span>';
+}
+
 function imgTag(url) {
   if (!url) return '';
   const safe = String(url).replace(/"/g, '&quot;');
@@ -1322,7 +1340,7 @@ async function renderPublishPreview() {
     html += '<div class="subq-block" style="margin-bottom:10px;">' +
       '<label style="display:flex;gap:8px;align-items:flex-start;font-weight:600;margin-bottom:6px;cursor:pointer;">' +
       '<input type="checkbox" class="subq-pick" data-order="' + sq.order + '" checked style="margin-top:4px;">' +
-      '<span>小題 ' + sq.order + '：' + sq.content + '</span></label>' +
+      '<span>小題 ' + sq.order + '：' + sq.content + categoryTag(sq) + '</span></label>' +
       '<div style="padding-left:26px;">' + getImages(sq).map(imgTag).join('') + '</div>';
     OPT_LABELS.forEach((l, i) => {
       html += '<div style="font-size:.88rem;padding-left:26px;' + (l === sq.correctAnswer ? 'color:var(--ok);font-weight:700;' : 'color:var(--text-mid);') + '">' +
@@ -1529,7 +1547,7 @@ function renderVoteBoard() {
     const total = answers.length || 1;
     const counts = { A: 0, B: 0, C: 0, D: 0 };
     answers.forEach(a => { if (counts[a.selectedAnswer] !== undefined) counts[a.selectedAnswer]++; });
-    let html = '<div class="bar-q">小題 ' + sq.order + '：' + sq.content + '</div>' + getImages(sq).map(imgTag).join('');
+    let html = '<div class="bar-q">小題 ' + sq.order + '：' + sq.content + categoryTag(sq) + '</div>' + getImages(sq).map(imgTag).join('');
     OPT_LABELS.forEach((l, i) => {
       const pct = Math.round((counts[l] / total) * 100);
       const isCorrect = l === sq.correctAnswer;
@@ -1592,7 +1610,7 @@ async function computeAnswerDetail() {
   const contentByRunOrder = {};
   runs.forEach(r => {
     contentByRunOrder[r.id] = {};
-    (r.subQuestions || []).forEach(sq => { contentByRunOrder[r.id][sq.order] = sq.content; });
+    (r.subQuestions || []).forEach(sq => { contentByRunOrder[r.id][sq.order] = sq; });
   });
 
   const respSnap = await getDocs(collection(db, 'sessions', sessionId, 'responses'));
@@ -1611,9 +1629,10 @@ async function computeAnswerDetail() {
         const ansMs = toMs(r.answeredAt);
         const sequentialSeconds = prevMs ? Math.max(0, Math.round((ansMs - prevMs) / 1000)) : null;
         prevMs = ansMs || prevMs;
+        const sqInfo = (contentByRunOrder[run.id] || {})[r.order] || {};
         rows.push({
           seatNo, unit: run.title, order: r.order,
-          content: (contentByRunOrder[run.id] || {})[r.order] || '',
+          content: sqInfo.content || '', category: sqInfo.category || '',
           selected: r.selectedAnswer, correct: r.isCorrect ? '對' : '錯',
           sinceStartSeconds: r.timeUsedSeconds != null ? r.timeUsedSeconds : '',
           sequentialSeconds: sequentialSeconds != null ? sequentialSeconds : '',
@@ -1632,8 +1651,8 @@ document.getElementById('exportDetailBtn').addEventListener('click', async () =>
   try {
     const rows = await computeAnswerDetail();
     if (!rows.length) { alert('這個場次目前還沒有任何作答紀錄。'); return; }
-    const csvRows = [['座號', '單元', '小題序號', '題目', '選擇', '正確', '距大題開始秒數', '作答間隔秒數（依作答順序推算）', '送出時間']];
-    rows.forEach(r => csvRows.push([r.seatNo, r.unit, r.order, r.content, r.selected, r.correct, r.sinceStartSeconds, r.sequentialSeconds, r.answeredAt]));
+    const csvRows = [['座號', '單元', '小題序號', '題目', '分類', '選擇', '正確', '距大題開始秒數', '作答間隔秒數（依作答順序推算）', '送出時間']];
+    rows.forEach(r => csvRows.push([r.seatNo, r.unit, r.order, r.content, r.category, r.selected, r.correct, r.sinceStartSeconds, r.sequentialSeconds, r.answeredAt]));
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([buildCsv(csvRows)], { type: 'text/csv;charset=utf-8;' }));
     a.download = '作答明細_' + classData.name + '_' + sessionId + '_' + todayStr() + '.csv';

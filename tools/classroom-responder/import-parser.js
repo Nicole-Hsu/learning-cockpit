@@ -28,15 +28,22 @@ export function csvCell(v) {
   return '"' + s.replace(/"/g, '""') + '"';
 }
 
+export const CATEGORIES = ['Knowledge', 'Application', 'Clinical Judgment'];
+
+export function normalizeCategory(s) {
+  const t = String(s || '').trim().toLowerCase().replace(/\s+/g, ' ').replace('judgement', 'judgment');
+  return CATEGORIES.find(c => c.toLowerCase() === t) || null;
+}
+
 export function buildExportCsv(banks) {
-  const rows = [['單元', '限時(秒)', '題目', 'A', 'B', 'C', 'D', '正解(A~D)', '圖片網址(多張用空格隔開)']];
+  const rows = [['單元', '限時(秒)', '題目', 'A', 'B', 'C', 'D', '正解(A~D)', '分類(Knowledge/Application/Clinical Judgment)', '圖片網址(多張用空格隔開)']];
   banks.forEach(b => {
     (b.subQuestions || []).forEach((sq, i) => {
       const imgs = (sq.imageUrls && sq.imageUrls.length) ? sq.imageUrls : (sq.imageUrl ? [sq.imageUrl] : []);
       rows.push([
         i === 0 ? b.title : '', i === 0 ? b.timeLimitSeconds : '',
         sq.content, sq.options[0], sq.options[1], sq.options[2], sq.options[3],
-        sq.correctAnswer, imgs.join(' ')
+        sq.correctAnswer, sq.category || '', imgs.join(' ')
       ]);
     });
   });
@@ -66,7 +73,8 @@ export function buildImportBanks(rows, defaultLimit = 300) {
     const title = r[0], limit = r[1], content = r[2];
     const opts = [r[3], r[4], r[5], r[6]];
     const correct = normalizeAnswer(r[7] || '');
-    const imgText = r[8] || '';
+    const category = normalizeCategory(r[8] || '');
+    const imgText = r[9] || '';
     const rowErrors = [];
 
     if (title) curTitle = title;
@@ -90,6 +98,7 @@ export function buildImportBanks(rows, defaultLimit = 300) {
     const missing = ['A', 'B', 'C', 'D'].filter((_, k) => !opts[k]);
     if (missing.length) rowErrors.push('選項 ' + missing.join('、') + ' 是空的（A~D 四個都要填）');
     if (!/^[ABCD]$/.test(correct)) rowErrors.push('正解要填 A、B、C 或 D（目前是「' + (r[7] || '') + '」）');
+    if (!category) rowErrors.push('分類要填 Knowledge、Application 或 Clinical Judgment 其中一個（目前是「' + (r[8] || '') + '」）');
 
     const imageUrls = imgText.split(/[\s,，、]+/).filter(Boolean);
     const badImg = imageUrls.filter(u => !/^https?:\/\//i.test(u));
@@ -101,7 +110,7 @@ export function buildImportBanks(rows, defaultLimit = 300) {
     }
     bank.subQuestions.push({
       order: bank.subQuestions.length + 1,
-      content, imageUrls, options: opts, correctAnswer: correct
+      content, imageUrls, options: opts, correctAnswer: correct, category
     });
   }
 
