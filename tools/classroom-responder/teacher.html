@@ -44,6 +44,11 @@ button, input, select, textarea { font-family: inherit; }
 .badge.warn { background: var(--danger); }
 .subq-block { border: 1.5px dashed var(--border); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
 .subq-block h4 { font-size: .9rem; color: var(--text-mid); margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center; }
+.subq-block .subq-num { display:inline-flex; align-items:center; justify-content:center; min-width:22px; height:22px; padding:0 6px; border-radius:999px; color:#fff; font-weight:700; font-size:.82rem; }
+.subq-block.sc0 { background:#eafbfa; border:1.5px solid #0ABAB5; } .subq-block.sc0 .subq-num { background:#0ABAB5; }
+.subq-block.sc1 { background:#fdf3e7; border:1.5px solid #d99a3e; } .subq-block.sc1 .subq-num { background:#d99a3e; }
+.subq-block.sc2 { background:#f3ecfb; border:1.5px solid #9868d6; } .subq-block.sc2 .subq-num { background:#9868d6; }
+.subq-block.sc3 { background:#eef7e6; border:1.5px solid #5fa542; } .subq-block.sc3 .subq-num { background:#5fa542; }
 .opt-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .opt-row span { width: 22px; font-weight: 700; color: var(--accent-dark); }
 .opt-row input[type=radio] { width: auto; }
@@ -854,7 +859,7 @@ document.getElementById('saveRosterBtn').addEventListener('click', async () => {
 function subqBlockHtml(idx) {
   return `
   <div class="subq-block" data-idx="${idx}">
-    <h4>小題 ${idx + 1} <button type="button" class="btn secondary small removeSubqBtn">刪除這小題</button></h4>
+    <h4><span><span class="subq-num">${idx + 1}</span> 小題</span> <button type="button" class="btn secondary small removeSubqBtn">刪除這小題</button></h4>
     <div class="field"><label>題目內容</label><textarea class="subq-content" placeholder="小題文字"></textarea></div>
     <div class="field">
       <label>分類</label>
@@ -899,13 +904,22 @@ function addImageRow(block, value) {
   block.querySelector('.subq-images').appendChild(row);
 }
 
+function renumberSubqBlocks() {
+  [...document.getElementById('subqList').children].forEach((block, i) => {
+    block.classList.remove('sc0', 'sc1', 'sc2', 'sc3');
+    block.classList.add('sc' + (i % 4));
+    const num = block.querySelector('.subq-num');
+    if (num) num.textContent = i + 1;
+  });
+}
+
 function addSubqBlock(sq) {
   const list = document.getElementById('subqList');
   const idx = list.children.length;
   const div = document.createElement('div');
   div.innerHTML = subqBlockHtml(idx);
   const block = div.firstElementChild;
-  block.querySelector('.removeSubqBtn').addEventListener('click', () => block.remove());
+  block.querySelector('.removeSubqBtn').addEventListener('click', () => { block.remove(); renumberSubqBlocks(); });
   block.querySelector('.addImageBtn').addEventListener('click', () => addImageRow(block, ''));
   const existingImages = sq ? getImages(sq) : [];
   if (existingImages.length) existingImages.forEach(u => addImageRow(block, u));
@@ -921,6 +935,7 @@ function addSubqBlock(sq) {
     }
   }
   list.appendChild(block);
+  renumberSubqBlocks();
 }
 
 let editingBankId = null;
