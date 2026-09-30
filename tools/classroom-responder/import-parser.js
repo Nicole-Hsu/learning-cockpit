@@ -22,7 +22,7 @@ export function parseTSV(text) {
   return rows;
 }
 
-function csvCell(v) {
+export function csvCell(v) {
   let s = String(v == null ? '' : v);
   if (/^[=@]/.test(s)) s = ' ' + s;
   return '"' + s.replace(/"/g, '""') + '"';
@@ -40,6 +40,10 @@ export function buildExportCsv(banks) {
       ]);
     });
   });
+  return buildCsv(rows);
+}
+
+export function buildCsv(rows) {
   return '﻿' + rows.map(r => r.map(csvCell).join(',')).join('\r\n');
 }
 

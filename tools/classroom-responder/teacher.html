@@ -276,7 +276,10 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
   <div class="card hidden" id="leaderboardCard">
     <div style="display:flex;justify-content:space-between;align-items:center;">
       <h2 style="margin-bottom:0;">排行榜</h2>
-      <button class="btn secondary small" id="recalcLeaderboardBtn">重新計算</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn secondary small" id="exportDetailBtn">匯出作答明細</button>
+        <button class="btn secondary small" id="recalcLeaderboardBtn">重新計算</button>
+      </div>
     </div>
     <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
       <button class="btn small" id="publishLeaderboardBtn">公布給學生</button>
@@ -293,7 +296,7 @@ table.lb th { color: var(--text-mid); font-size: .78rem; }
 </div>
 
 <script type="module">
-import { parseTSV, buildImportBanks, buildExportCsv } from './import-parser.js';
+import { parseTSV, buildImportBanks, buildExportCsv, buildCsv } from './import-parser.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js';
 import {
   getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut
@@ -1580,6 +1583,67 @@ async function computeLeaderboard() {
   rows.sort((a, b) => b.correctCount - a.correctCount || a.totalTime - b.totalTime);
   return rows;
 }
+
+function toMs(ts) { return ts && ts.toMillis ? ts.toMillis() : 0; }
+
+async function computeAnswerDetail() {
+  const runsSnap = await getDocs(collection(db, 'sessions', sessionId, 'runs'));
+  const runs = runsSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => toMs(a.startedAt) - toMs(b.startedAt));
+  const contentByRunOrder = {};
+  runs.forEach(r => {
+    contentByRunOrder[r.id] = {};
+    (r.subQuestions || []).forEach(sq => { contentByRunOrder[r.id][sq.order] = sq.content; });
+  });
+
+  const respSnap = await getDocs(collection(db, 'sessions', sessionId, 'responses'));
+  const bySeat = {};
+  respSnap.docs.forEach(d => {
+    const r = d.data();
+    (bySeat[r.seatNo] = bySeat[r.seatNo] || []).push(r);
+  });
+
+  const rows = [];
+  Object.keys(bySeat).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).forEach(seatNo => {
+    runs.forEach(run => {
+      const mine = bySeat[seatNo].filter(r => r.bankId === run.id).sort((a, b) => toMs(a.answeredAt) - toMs(b.answeredAt));
+      let prevMs = toMs(run.startedAt);
+      mine.forEach(r => {
+        const ansMs = toMs(r.answeredAt);
+        const sequentialSeconds = prevMs ? Math.max(0, Math.round((ansMs - prevMs) / 1000)) : null;
+        prevMs = ansMs || prevMs;
+        rows.push({
+          seatNo, unit: run.title, order: r.order,
+          content: (contentByRunOrder[run.id] || {})[r.order] || '',
+          selected: r.selectedAnswer, correct: r.isCorrect ? '對' : '錯',
+          sinceStartSeconds: r.timeUsedSeconds != null ? r.timeUsedSeconds : '',
+          sequentialSeconds: sequentialSeconds != null ? sequentialSeconds : '',
+          answeredAt: r.answeredAt && r.answeredAt.toDate ? r.answeredAt.toDate().toLocaleString('zh-TW') : ''
+        });
+      });
+    });
+  });
+  return rows;
+}
+
+document.getElementById('exportDetailBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('exportDetailBtn');
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = '匯出中…';
+  try {
+    const rows = await computeAnswerDetail();
+    if (!rows.length) { alert('這個場次目前還沒有任何作答紀錄。'); return; }
+    const csvRows = [['座號', '單元', '小題序號', '題目', '選擇', '正確', '距大題開始秒數', '作答間隔秒數（依作答順序推算）', '送出時間']];
+    rows.forEach(r => csvRows.push([r.seatNo, r.unit, r.order, r.content, r.selected, r.correct, r.sinceStartSeconds, r.sequentialSeconds, r.answeredAt]));
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([buildCsv(csvRows)], { type: 'text/csv;charset=utf-8;' }));
+    a.download = '作答明細_' + classData.name + '_' + sessionId + '_' + todayStr() + '.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  } catch (e) {
+    alert('匯出失敗：' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = original;
+  }
+});
 
 async function renderLeaderboard() {
   const body = document.getElementById('lbBody');
