@@ -1,18 +1,135 @@
-rules_version='2'
+rules_version='2';
 
+// 今日小挑戰（classroom-responder）正式規則
+// 角色：
+//   - 管理者：nicolehsu2004@gmail.com
+//   - 老師：Google 登入，且信箱在 teachers/{email} 白名單內（科別授權看 subjects）
+//   - 學生：不登入，掃 QR code 進場（只能做課堂中必要的讀寫）
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ---------- 共用函式 ----------
+    function signedIn() {
+      return request.auth != null && request.auth.token.email != null;
+    }
+    function myEmail() {
+      return request.auth.token.email.lower();
+    }
+    function isRoot() {
+      return signedIn() && myEmail() == 'nicolehsu2004@gmail.com';
+    }
+    function isTeacher() {
+      return isRoot() ||
+        (signedIn() && exists(/databases/$(database)/documents/teachers/$(myEmail())));
+    }
+    function hasSubject(subject) {
+      return isRoot() ||
+        (isTeacher() &&
+         subject in get(/databases/$(database)/documents/teachers/$(myEmail())).data.subjects);
+    }
+    function sessionDoc(sid) {
+      return get(/databases/$(database)/documents/sessions/$(sid)).data;
+    }
+    function sessionActive(sid) {
+      return exists(/databases/$(database)/documents/sessions/$(sid)) &&
+        sessionDoc(sid).status == 'active';
+    }
+    function isSessionOwner(sid) {
+      return signedIn() && (isRoot() || sessionDoc(sid).teacherId == request.auth.uid);
+    }
+    function inRoster(sid, seat) {
+      return exists(/databases/$(database)/documents/classes/$(sessionDoc(sid).classId)/students/$(seat));
+    }
+
+    // ---------- 老師白名單 ----------
+    match /teachers/{email} {
+      allow get: if signedIn() && (isRoot() || myEmail() == email);
+      allow list: if isRoot();
+      allow write: if isRoot();
+    }
+
+    // ---------- 科別目錄 ----------
+    match /subjects/{subject} {
+      allow read: if isTeacher();
+      allow write: if isRoot();
+    }
+
+    // ---------- 班級 ----------
+    match /classes/{classId} {
+      // 學生掃 QR code 後要讀班級名稱與名單（只有座號，已去識別化）
+      allow get: if true;
+      allow list: if signedIn() && (isRoot() || resource.data.teacherId == request.auth.uid);
+      allow create: if isTeacher() && request.resource.data.teacherId == request.auth.uid;
+      allow update: if signedIn() &&
+        (isRoot() || resource.data.teacherId == request.auth.uid) &&
+        request.resource.data.teacherId == resource.data.teacherId;
+      allow delete: if signedIn() && (isRoot() || resource.data.teacherId == request.auth.uid);
+
+      match /students/{seat} {
+        allow read: if true;
+        allow write: if signedIn() &&
+          (isRoot() ||
+           get(/databases/$(database)/documents/classes/$(classId)).data.teacherId == request.auth.uid);
+      }
+    }
+
+    // ---------- 題庫（同科別老師共用）----------
+    match /questionBanks/{bankId} {
+      allow read: if hasSubject(resource.data.subject);
+      allow create: if hasSubject(request.resource.data.subject) &&
+        request.resource.data.createdBy == request.auth.uid;
+      allow update: if hasSubject(resource.data.subject) &&
+        (isRoot() || resource.data.createdBy == request.auth.uid);
+      allow delete: if isRoot();
+    }
+
+    // ---------- 課堂場次 ----------
+    match /sessions/{sessionId} {
+      // 場次代碼是 6 碼隨機字串；學生只能「知道代碼才讀得到」，不能列出所有場次
+      allow get: if true;
+      allow list: if isTeacher();
+      allow create: if isTeacher() && request.resource.data.teacherId == request.auth.uid;
+      allow update: if signedIn() && (isRoot() || resource.data.teacherId == request.auth.uid);
+      allow delete: if signedIn() && (isRoot() || resource.data.teacherId == request.auth.uid);
+
+      // 點名：學生加入／退出座號
+      match /joined/{seat} {
+        allow read: if true;
+        allow create, update: if sessionActive(sessionId) &&
+          inRoster(sessionId, seat) &&
+          request.resource.data.keys().hasOnly(['joinedAt']) &&
+          request.resource.data.joinedAt == request.time;
+        allow delete: if true;
+      }
+
+      // 計時狀態：只有場次老師能寫，學生只讀
+      match /runs/{bankId} {
+        allow read: if true;
+        allow write: if isSessionOwner(sessionId);
+      }
+
+      // 作答紀錄：學生寫自己的座號，老師可讀可刪
+      match /responses/{respId} {
+        allow read: if true;
+        allow create, update: if sessionActive(sessionId) &&
+          request.resource.data.keys().hasOnly(
+            ['seatNo', 'bankId', 'order', 'selectedAnswer', 'isCorrect', 'timeUsedSeconds', 'answeredAt']) &&
+          request.resource.data.seatNo is string &&
+          inRoster(sessionId, request.resource.data.seatNo) &&
+          request.resource.data.bankId is string &&
+          request.resource.data.order is int &&
+          request.resource.data.selectedAnswer in ['A', 'B', 'C', 'D'] &&
+          request.resource.data.isCorrect is bool &&
+          request.resource.data.timeUsedSeconds is number &&
+          request.resource.data.answeredAt == request.time &&
+          respId == request.resource.data.seatNo + '_' + request.resource.data.bankId + '_' + string(request.resource.data.order);
+        allow delete: if isSessionOwner(sessionId);
+      }
+    }
+
+    // 其他一律拒絕
     match /{document=**} {
-      // This rule allows anyone with your database reference to view, edit,
-      // and delete all data in your database. It is useful for getting
-      // started, but it is configured to expire after 30 days because it
-      // leaves your app open to attackers. At that time, all client
-      // requests to your database will be denied.
-      //
-      // Make sure to write security rules for your app before that time, or
-      // else all client requests to your database will be denied until you
-      // update your rules.
-      allow read, write: if request.time < timestamp.date(2026, 10, 23);
+      allow read, write: if false;
     }
   }
 }
