@@ -6,6 +6,8 @@
 <title>今日小挑戰</title>
 <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://i.postimg.cc" crossorigin>
+<link rel="preconnect" href="https://i.ibb.co" crossorigin>
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js">
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js">
 <style>
@@ -35,7 +37,7 @@ button, input, select { font-family: inherit; }
 .countdown { font-size: 1.4rem; font-weight: 700; color: var(--accent-dark); text-align: center; }
 .subq-card { border: 1.5px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
 .subq-card .q-title { font-weight: 700; margin-bottom: 8px; }
-.subq-card img { max-width: 100%; border-radius: 8px; margin-bottom: 10px; }
+.subq-card img { display: block; max-width: 100%; min-height: 60px; background: #eef7f6; border-radius: 8px; margin-bottom: 10px; }
 .opt-btn { display: block; width: 100%; text-align: left; padding: 12px 14px; margin-bottom: 8px; border-radius: 10px; border: 1.5px solid var(--border); background: #fafafa; cursor: pointer; font-size: .98rem; }
 .opt-btn .lab { display:inline-block; width:26px; font-weight:700; color: var(--accent-dark); }
 .opt-btn.selected { border-color: var(--accent); background: #d9f6f4; }
@@ -186,6 +188,8 @@ async function init() {
   if (session.status === 'ended') { showError('這堂課已經結束了。'); return; }
   classId = session.classId;
 
+  if (!localStorage.getItem('cr_seat_' + sessionId)) startJoinedWatch();
+
   const [classSnap, rosterSnap] = await Promise.all([
     getDoc(doc(db, 'classes', classId)),
     getDocs(collection(db, 'classes', classId, 'students'))
@@ -212,23 +216,38 @@ function joinInBackground() {
   });
 }
 
+let joinedSet = new Set(), seatOpts = null;
+
+function applyJoinedToSelect() {
+  if (!seatOpts) return;
+  rosterList.forEach(seatNo => {
+    const text = seatNo + ' 號' + (joinedSet.has(seatNo) ? '（已有人加入）' : '');
+    const opt = seatOpts[seatNo];
+    if (opt.textContent !== text) opt.textContent = text;
+  });
+}
+
+function startJoinedWatch() {
+  if (unsubJoinedList) return;
+  unsubJoinedList = onSnapshot(collection(db, 'sessions', sessionId, 'joined'), snap => {
+    joinedSet = new Set(snap.docs.map(d => d.id));
+    applyJoinedToSelect();
+  });
+}
+
 async function showJoinCard() {
   const sel = document.getElementById('seatSelect');
-  const roster = rosterList;
-
-  if (unsubJoinedList) unsubJoinedList();
-  unsubJoinedList = onSnapshot(collection(db, 'sessions', sessionId, 'joined'), snap => {
-    const joinedSet = new Set(snap.docs.map(d => d.id));
-    const prevValue = sel.value;
-    sel.innerHTML = '';
-    roster.forEach(seatNo => {
-      const opt = document.createElement('option');
-      opt.value = seatNo;
-      opt.textContent = seatNo + ' 號' + (joinedSet.has(seatNo) ? '（已有人加入）' : '');
-      sel.appendChild(opt);
-    });
-    if (roster.includes(prevValue)) sel.value = prevValue;
+  sel.innerHTML = '';
+  seatOpts = {};
+  rosterList.forEach(seatNo => {
+    const opt = document.createElement('option');
+    opt.value = seatNo;
+    opt.textContent = seatNo + ' 號';
+    sel.appendChild(opt);
+    seatOpts[seatNo] = opt;
   });
+  applyJoinedToSelect();
+  startJoinedWatch();
 
   document.getElementById('seatHint').textContent = '如果看到「已有人加入」但不是你本人在用，請告訴老師。';
   document.getElementById('joinCard').classList.remove('hidden');
@@ -257,6 +276,7 @@ document.getElementById('joinBtn').addEventListener('click', async () => {
   mySeat = sel.value;
   if (!mySeat) { document.getElementById('joinErr').textContent = '請選擇座號'; return; }
   if (unsubJoinedList) { unsubJoinedList(); unsubJoinedList = null; }
+  seatOpts = null;
   localStorage.setItem('cr_seat_' + sessionId, mySeat);
   joinInBackground();
   document.getElementById('joinCard').classList.add('hidden');
@@ -385,7 +405,7 @@ function renderSubQuestions() {
     let html = '<div class="q-title">小題 ' + sq.order + '：' + sq.content + '<span class="status-tag"></span></div>';
     const images = (sq.imageUrls && sq.imageUrls.length) ? sq.imageUrls : (sq.imageUrl ? [sq.imageUrl] : []);
     images.forEach(url => {
-      html += '<img src="' + String(url).replace(/"/g, '&quot;') + '" referrerpolicy="no-referrer" ' +
+      html += '<img src="' + String(url).replace(/"/g, '&quot;') + '" referrerpolicy="no-referrer" decoding="async" ' +
         'onerror="this.outerHTML=\'<div style=&quot;color:#d96060;font-size:.8rem;&quot;>（圖片載入失敗，請告訴老師）</div>\'">';
     });
     card.innerHTML = html;

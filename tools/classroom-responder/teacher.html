@@ -1436,7 +1436,11 @@ function showSessionInfo() {
       const joinedMap = {};
       snap.forEach(d => { joinedMap[d.id] = d.data(); });
       document.getElementById('joinedCount').textContent = snap.size;
-      renderJoinedList(roster, joinedMap);
+      pendingJoined = { roster, joinedMap };
+      if (!joinedRenderQueued) {
+        joinedRenderQueued = true;
+        requestAnimationFrame(() => { joinedRenderQueued = false; renderJoinedList(pendingJoined.roster, pendingJoined.joinedMap); });
+      }
     });
   });
 }
@@ -1447,9 +1451,11 @@ document.getElementById('publishBtn').addEventListener('click', async () => {
   const bankId = document.getElementById('publishBankSelect').value;
   if (!bankId) { errEl.textContent = '請先建立題庫'; return; }
   try {
-    const rosterCheck = await getDocs(collection(db, 'classes', classId, 'students'));
+    const [rosterCheck, bankSnap] = await Promise.all([
+      getDocs(collection(db, 'classes', classId, 'students')),
+      getDoc(doc(db, 'questionBanks', bankId))
+    ]);
     if (rosterCheck.empty) { errEl.textContent = '這個班級還沒有名單，請先儲存名單'; return; }
-    const bankSnap = await getDoc(doc(db, 'questionBanks', bankId));
     const bank = bankSnap.data();
 
     const pickedOrders = new Set([...document.querySelectorAll('.subq-pick:checked')].map(cb => parseInt(cb.dataset.order, 10)));
@@ -1470,7 +1476,9 @@ document.getElementById('publishBtn').addEventListener('click', async () => {
       title: bank.title, timeLimitSeconds: bank.timeLimitSeconds, subQuestions: chosenSubQuestions,
       startedAt: serverTimestamp(), endedAt: null
     });
-    await watchActiveRun();
+    currentRunBankId = bankId;
+    currentBankSnapshot = { title: bank.title, timeLimitSeconds: bank.timeLimitSeconds, subQuestions: chosenSubQuestions };
+    openRunBoard();
   } catch (e) { errEl.textContent = e.message; }
 });
 
@@ -1486,6 +1494,9 @@ async function watchActiveRun() {
 function openRunBoard() {
   document.getElementById('runCard').classList.remove('hidden');
   document.getElementById('runTitle').textContent = currentBankSnapshot.title;
+  voteBoardBuilt = false;
+  responsesCache = [];
+  renderVoteBoard();
 
   if (unsubRun) unsubRun();
   unsubRun = onSnapshot(doc(db, 'sessions', sessionId, 'runs', currentRunBankId), snap => {
@@ -1497,9 +1508,11 @@ function openRunBoard() {
   if (unsubResponses) unsubResponses();
   unsubResponses = onSnapshot(
     query(collection(db, 'sessions', sessionId, 'responses'), where('bankId', '==', currentRunBankId)),
-    snap => { responsesCache = snap.docs.map(d => d.data()); renderVoteBoard(); }
+    snap => { responsesCache = snap.docs.map(d => d.data()); scheduleVoteBoard(); }
   );
 }
+
+let pendingJoined = null, joinedRenderQueued = false;
 
 function renderJoinedList(roster, joinedMap) {
   const list = document.getElementById('joinedList');
@@ -1552,26 +1565,50 @@ function startCountdown() {
   countdownTimer = setInterval(tick, 1000);
 }
 
+let voteBoardBuilt = false, voteEls = {}, voteRenderQueued = false;
+
+function scheduleVoteBoard() {
+  if (voteRenderQueued) return;
+  voteRenderQueued = true;
+  requestAnimationFrame(() => { voteRenderQueued = false; renderVoteBoard(); });
+}
+
 function renderVoteBoard() {
   const board = document.getElementById('voteBoard');
-  board.innerHTML = '';
-  currentBankSnapshot.subQuestions.forEach(sq => {
-    const wrap = document.createElement('div');
-    wrap.className = 'bar-wrap';
-    const answers = responsesCache.filter(r => r.order === sq.order);
-    const total = answers.length || 1;
-    const counts = { A: 0, B: 0, C: 0, D: 0 };
-    answers.forEach(a => { if (counts[a.selectedAnswer] !== undefined) counts[a.selectedAnswer]++; });
-    let html = '<div class="bar-q">小題 ' + sq.order + '：' + sq.content + categoryTag(sq) + '</div>' + getImages(sq).map(imgTag).join('');
-    OPT_LABELS.forEach((l, i) => {
-      const pct = Math.round((counts[l] / total) * 100);
-      const isCorrect = l === sq.correctAnswer;
-      html += '<div class="bar-line' + (isCorrect ? ' correct' : '') + '"><span class="bar-label">' + l + '：' + (sq.options[i] || '') + '</span>' +
-        '<div class="bar-row"><div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div>' +
-        '<span class="bar-count">' + counts[l] + '</span></div></div>';
+  const subQs = currentBankSnapshot.subQuestions;
+  if (!voteBoardBuilt) {
+    voteBoardBuilt = true;
+    voteEls = {};
+    board.innerHTML = '';
+    subQs.forEach(sq => {
+      const wrap = document.createElement('div');
+      wrap.className = 'bar-wrap';
+      let html = '<div class="bar-q">小題 ' + sq.order + '：' + sq.content + categoryTag(sq) + '</div>' + getImages(sq).map(imgTag).join('');
+      OPT_LABELS.forEach((l, i) => {
+        html += '<div class="bar-line' + (l === sq.correctAnswer ? ' correct' : '') + '"><span class="bar-label">' + l + '：' + (sq.options[i] || '') + '</span>' +
+          '<div class="bar-row"><div class="bar-track"><div class="bar-fill" style="width:0%"></div></div>' +
+          '<span class="bar-count">0</span></div></div>';
+      });
+      wrap.innerHTML = html;
+      board.appendChild(wrap);
+      voteEls[sq.order] = { fills: wrap.querySelectorAll('.bar-fill'), counts: wrap.querySelectorAll('.bar-count') };
     });
-    wrap.innerHTML = html;
-    board.appendChild(wrap);
+  }
+  const tally = {};
+  responsesCache.forEach(r => {
+    const t = tally[r.order] || (tally[r.order] = { A: 0, B: 0, C: 0, D: 0 });
+    if (t[r.selectedAnswer] !== undefined) t[r.selectedAnswer]++;
+  });
+  subQs.forEach(sq => {
+    const t = tally[sq.order] || { A: 0, B: 0, C: 0, D: 0 };
+    const total = (t.A + t.B + t.C + t.D) || 1;
+    const els = voteEls[sq.order];
+    OPT_LABELS.forEach((l, i) => {
+      const pct = Math.round((t[l] / total) * 100) + '%';
+      if (els.fills[i].style.width !== pct) els.fills[i].style.width = pct;
+      const n = String(t[l]);
+      if (els.counts[i].textContent !== n) els.counts[i].textContent = n;
+    });
   });
 }
 
